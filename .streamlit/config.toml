@@ -6,3 +6,11 @@ secondaryBackgroundColor = "#EEF1F5"
 textColor = "#16202B"
 borderColor = "#E1E5EA"
 font = "sans-serif"
+
+[server]
+# Local only: anyone who can reach the app can spend the configured API key.
+address = "localhost"
+headless = true
+
+[browser]
+gatherUsageStats = false

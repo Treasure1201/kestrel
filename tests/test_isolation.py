@@ -204,6 +204,8 @@ def test_only_the_staff_bot_is_offered_the_calendar_tools(workspace: Path) -> No
             svc.close()
     assert CALENDAR_TOOLS <= offered[STAFF]
     assert not CALENDAR_TOOLS & offered[PRODUCTS]
+    assert "read_file" in offered[STAFF]  # the staff bot has a skill, so it may read skill files
+    assert "read_file" not in offered[PRODUCTS]  # no skills enabled, so no file tool at all
     for tools in offered.values():
-        assert {"search_documents", "get_table", "calculate", "read_file"} <= tools  # both bots have skills
+        assert {"search_documents", "get_table", "calculate"} <= tools
         assert not {"write_file", "edit_file", "execute", "task", "ls", "glob", "grep"} & tools

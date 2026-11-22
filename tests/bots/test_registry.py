@@ -80,7 +80,7 @@ def test_product_bot_loads(settings: Settings, repo_root: Path) -> None:
     assert bot.knowledge.approval == "required" and bot.knowledge.manifest == root / "manifest.yaml"
     assert bot.audience == frozenset({"call-centre-agent", "broker"})
     assert bot.tools == ("search_documents", "get_table", "calculate")
-    assert bot.mcp_servers == () and bot.skills == (root / "skills",)
+    assert bot.mcp_servers == () and bot.skills == ()
     assert bot.privacy.classification == "internal" and bot.privacy.on_personal_information == "redact"
     assert bot.verification.on_failure == "withhold"
     assert bot.model.default == settings.model

@@ -11,7 +11,7 @@ knowledge:
 prompt: prompt.md                              # persona and domain guidance
 tools: [search_documents, get_table, calculate]
 mcp_servers: []                                # names from config/mcp_servers.yaml
-skills: [skills/]                              # skill folders (each with <skill>/SKILL.md)
+skills: []   # skills/ holds two skills; measured on the test questions they changed no grade and added about a third more input tokens, so they are off. Use [skills/] to enable.
 
 model:
   default: ${KESTREL_MODEL}                    # always set: settings supply a default
