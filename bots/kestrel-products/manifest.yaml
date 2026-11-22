@@ -1,0 +1,60 @@
+# Approved documents of the kestrel-products collection.
+# Approval binds to exact bytes: a file whose SHA-256 no longer matches drops to `pending`.
+# Hashes verified against data/source/kestrel-products/ with `sha256sum`.
+collection: kestrel-products
+documents:
+  - filename: KA_Group_Life_Product_Guide_2025.docx
+    sha256: 40cf9e325f9728c79683010cad6063414bd68db32b243b800587c33d325013f7
+    label: Group Life Assurance Product Guide (Version 2025.1)
+    family: group-life-product-guide
+    edition: "2025"
+    effective_from: 2025-01-01
+    approved: true
+    approved_by: assessment-pack
+
+  - filename: KA_Group_Life_Product_Guide_2026.docx
+    sha256: 3545330a5726ed6072eb4e1b838bc9d15a97ec24e9b8345019a5c7ad5e9e66dc
+    label: Group Life Assurance Product Guide (Version 2026.1)
+    family: group-life-product-guide
+    edition: "2026"
+    effective_from: 2026-01-01
+    supersedes: "2025"
+    approved: true
+    approved_by: assessment-pack
+
+  - filename: KA_Group_Disability_Income_Guide_2026.pdf
+    sha256: 35bb22136cb5988c23d7a11d8909f4b00f8303a7f2af4e3d0a623275c95a2267
+    label: Group Disability Income Benefit Product Guide (Version 2026.1)
+    family: group-disability-income-guide
+    edition: "2026"
+    effective_from: 2026-01-01
+    approved: true
+    approved_by: assessment-pack
+
+  - filename: KA_Funeral_Benefit_Rules_2026.docx
+    sha256: def5dc372260eb000de814dcfd0fc321355e015f33dadd7cb4b36ac426c2fbf8
+    label: Group Funeral Benefit Scheme Rules (Version 2026.1)
+    family: group-funeral-benefit-rules
+    edition: "2026"
+    effective_from: 2026-01-01
+    approved: true
+    approved_by: assessment-pack
+
+  - filename: KA_Claims_FAQ.docx
+    sha256: 3cac10d3e57c62ab4bc33f105b84975082fffe0aa44341c4157ea68c610c93f5
+    label: Claims Frequently Asked Questions (updated March 2026)
+    family: claims-faq
+    edition: "2026-03"
+    # The document states only "Updated March 2026"; the first of that month is used.
+    effective_from: 2026-03-01
+    approved: true
+    approved_by: assessment-pack
+
+  - filename: KA_Free_Cover_Limits_2026.xlsx
+    sha256: a06aa57e8d6315b346ec647db6f7e8c1ba1db215ceb5cf2e161b20ed75f689b4
+    label: Underwriting Free Cover Limits (effective 1 January 2026)
+    family: underwriting-free-cover-limits
+    edition: "2026"
+    effective_from: 2026-01-01
+    approved: true
+    approved_by: assessment-pack
