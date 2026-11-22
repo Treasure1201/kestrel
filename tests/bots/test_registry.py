@@ -205,5 +205,9 @@ def test_invalid_mcp_file_names_the_entry_and_field(tmp_path: Path) -> None:
         load_mcp_servers(tmp_path)
 
 
-def test_repository_mcp_file_has_no_active_servers(repo_root: Path) -> None:
-    assert load_mcp_servers(repo_root / "config") == {}
+def test_repository_mcp_file_defines_only_the_workday_calendar(repo_root: Path) -> None:
+    servers = load_mcp_servers(repo_root / "config")
+    assert list(servers) == ["workday-calendar"]
+    spec = servers["workday-calendar"]
+    assert spec.transport == "stdio" and spec.locality == "on-device"
+    assert spec.allowed_tools == ("today", "working_days_between")

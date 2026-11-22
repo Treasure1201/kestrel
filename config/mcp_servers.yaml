@@ -18,4 +18,14 @@
 #       reviewed_on: "2026-11-22"
 #       statement: "lookup reads a local file and has no side effects."
 
-servers: []
+servers:
+  - name: workday-calendar
+    transport: stdio
+    command: python                    # the interpreter running kestrel
+    args: ["examples/mcp_servers/workday_calendar.py"]   # relative to the repository root
+    allowed_tools: [today, working_days_between]
+    locality: on-device
+    read_only:
+      reviewed_by: "Kestrel maintainers"
+      reviewed_on: "2026-11-23"
+      statement: "today reads the system clock; working_days_between computes from its arguments. Neither stores, writes nor sends anything."
