@@ -11,7 +11,7 @@ knowledge:
 prompt: prompt.md                              # persona and domain guidance
 tools: [search_documents, get_table, calculate]
 mcp_servers: []                                # names from config/mcp_servers.yaml
-skills: []                                     # skill folders (each with <skill>/SKILL.md), added later
+skills: [skills/]                              # skill folders (each with <skill>/SKILL.md)
 
 model:
   default: ${KESTREL_MODEL}                    # always set: settings supply a default
