@@ -148,8 +148,8 @@ evaluation:
 What this buys:
 
 - **Isolation.** A collection id is stamped on every document, chunk and vector. Search always filters by the bot's collections in SQL, before ranking. A bot cannot retrieve another bot's documents, and a test proves it.
-- **Least privilege.** A bot gets only the tools, MCP servers and skills it names. MCP servers are defined once in `config/mcp_servers.yaml` (command or URL, allowed tool names), so a server is approved centrally and bots opt in by name. Output from an MCP tool is treated as untrusted data, exactly like a document.
-- **Skills.** Procedural know-how (how to read a banded table, how to handle a two-edition conflict) lives in `SKILL.md` files loaded through DeepAgents' skills support with a read-only backend rooted at the bot's folder. The agent has no write, shell or sub-agent tools.
+- **Least privilege.** A bot gets only the tools, MCP servers and skills it names. MCP servers are defined once in `config/mcp_servers.yaml` (command or URL, allowed tool names, whether it runs on-device or externally, and a reviewer's statement that the listed tools only read). A server is approved centrally and bots opt in by name. An allow-list limits which tools can be called; it cannot make a tool harmless, which is why approval is a human step. Output from an MCP tool is treated as untrusted data, exactly like a document, and arguments sent to one pass the privacy gate.
+- **Skills.** Procedural know-how (how to read a banded table, how to handle a two-edition conflict) lives in `SKILL.md` files loaded through DeepAgents' skills support with a read-only backend rooted at the bot's folder. The agent has no write, shell or sub-agent tools, and tests assert both the tool inventory and that paths outside the skills folder cannot be read.
 - **Per-bot policy.** A help-desk bot over HR policies can be `confidential` and therefore locked to local models, while the product bot uses a hosted model.
 
 The submission ships two bots: `kestrel-products` (the assessed one) and `staff-policies`, a small demonstration bot over three clearly labelled synthetic documents with a toy MCP server attached. It exists to prove isolation, per-bot policy and "add a bot without touching code". The 15-question evaluation uses only `kestrel-products` and only the supplied documents.
@@ -157,7 +157,7 @@ The submission ships two bots: `kestrel-products` (the assessed one) and `staff-
 ## 4. Ingestion
 
 - **Parsers keep structure and rendering.** DOCX: headings, numbered sections, tables. PDF: page, headings, tables extracted cell by cell. XLSX: sheet, table regions, header row, cell addresses. Markdown: headings. Every text span keeps what is needed to judge visibility (colour, size, hidden flags, position).
-- **Scanner.** Text a reader could not see (white on white, 1-pt, hidden runs, off-page) is removed from searchable content and recorded as a finding. Instruction-like wording is flagged. The rules are generic; none name a document.
+- **Scanner.** Text a reader could not see (too little contrast, 1-pt, hidden runs, off-page) is removed from searchable content and recorded as a finding. Contrast is judged against the resolved background, including table-cell shading, so white header text on a dark cell is kept while white text on a white page is not. Instruction-like wording is flagged. The rules are generic; none name a document.
 - **Citations.** Each section stores a human locator: `file > section 4.2 > heading`, `file > page 3 > table`, `file > sheet > A5:D9`.
 - **Tables.** A table is stored whole as structured rows and also chunked row by row with its header, so a search hit can lead to the full table.
 - **Lifecycle in data, not in the prompt.** `manifest.yaml` binds each file's SHA-256 to a family, edition, effective date, what it supersedes and an approval. Ingest marks each document `current`, `superseded`, `pending` or `blocked`. Only `current` documents are searched by default. A changed file no longer matches its approved hash and drops to `pending`.
@@ -169,7 +169,7 @@ Hybrid search inside one SQLite file: FTS5 (BM25) for exact terms such as "Optio
 
 Why this choice: zero extra services, all three front ends can read it at once, documents never leave the machine for indexing, and exact-term recall matters as much as meaning in rule documents. The vector index sits behind a `VectorIndex` protocol, so a managed search service replaces it without touching callers.
 
-A question that names an edition or date ("under the 2025 guide", "as of 2025-06-01") widens the scope to that edition; otherwise superseded editions are invisible.
+Superseded editions are invisible by default. A question that names one edition or one date ("under the 2025 guide", "as of 2025-06-01") *switches* the scope to the edition in force then; it never mixes two editions in one result set. A question that names two editions, or a year that could be an event date or an edition, gets a request to clarify. Blocked documents are never searchable, whatever the scope.
 
 ## 6. Answering
 
@@ -178,39 +178,59 @@ A DeepAgents agent, restricted to read-only tools, returns a structured answer:
 ```
 status        answered | partial | not_found | refused
 answer        short, plain language, suitable to read to a caller
-citations     [{label: "c3", quote: "<verbatim text from that excerpt>"}]
-calculations  [{expression, result}]
+citations     [{label: "c3" or "c7.r4", quote: "<verbatim text>", supports: "<the claim it backs>"}]
+calculations  [{expression, result, rule: "<label of the excerpt stating the formula>"}]
 caveats       conflicts, assumptions, limits
+reason        required for not_found and refused
 ```
 
-Tools: `search_documents` (labelled excerpts `c1, c2, ...`, with a search budget and duplicate guard), `get_table` (every row of the table an excerpt belongs to, for band lookups) and `calculate` (a safe arithmetic evaluator; the model never does sums itself).
+Tools: `search_documents` (labelled excerpts `c1, c2, ...`, with a search budget and duplicate guard), `get_table` (every row of the table an excerpt belongs to, each row labelled `c7.r1, c7.r2, ...` with its header, for band lookups) and `calculate` (a safe decimal arithmetic evaluator with defined rounding; the model never does sums itself).
 
-**The verifier** runs after the model and is plain code:
+The prompt requires the answer to carry the conditions attached to a rule (for example "the lower of", "aims to", "working days", "after receipt of all documents") and to quote them.
+
+**Requirements by status**
+
+| Status | Meaning | Must have |
+|---|---|---|
+| `answered`, `partial` | the documents support the answer | at least one citation; every check below passes |
+| `not_found` | the documents do not establish an answer | a reason worded as "the documents do not say", never as a fact about the business; citations optional |
+| `refused` | outside the bot's purpose or privacy policy | a reason and who to ask |
+
+Two further outcomes are set by the application, not the model: `withheld` (evidence checks failed after repair) and `error`. All five are reported separately in the audit trail and in evaluation, so a retrieval miss, a correct decline and a withheld answer are never counted as the same thing.
+
+**Evidence checks** run after the model and are plain code:
 
 1. every cited label was actually retrieved in this request;
-2. every quote is found verbatim in the excerpt it cites (after whitespace and number-format normalisation);
-3. every number in the answer and caveats appears in a cited excerpt, the question, or a recomputed calculation;
-4. every reported calculation is recomputed and its inputs traced to cited text or the question;
-5. an answer cites at least one source; a decline carries a reason and does not follow hidden arithmetic;
-6. no citation points at a superseded or blocked document unless the question asked for that edition.
+2. every quote is found verbatim in the excerpt, or the single table row, it cites (after whitespace and number-format normalisation);
+3. a citation into a table names a row, not the whole table, so the quote must come from the row relied on;
+4. every number in the answer and caveats appears in a cited quote's excerpt, the question, or a recomputed calculation (digits, grouped digits, "R5 million" and number words up to twelve are normalised);
+5. every reported calculation is recomputed, each operand is traced to a cited excerpt or the question, and the calculation names the excerpt that states the rule;
+6. a decline does not follow hidden arithmetic and carries a reason;
+7. no citation points at a superseded or blocked document unless the question asked for that edition.
 
-On failure the agent gets one repair turn with the specific issues. If it still fails, the bot's policy decides: `withhold` (the user sees "could not verify; refer to the source", with the retrieved sections) or `warn`. The verdict is always shown and always audited.
+On failure the agent gets one repair turn with the specific issues. If it still fails, the bot's policy decides: `withhold` (the user sees "could not confirm against the sources", with the retrieved sections to read) or `warn`. The outcome is always shown and always audited.
 
-This gives readable answers with checkable evidence: the model writes the sentence, the application proves the quote and the numbers.
+**What the checks do and do not prove.** They prove the evidence exists, is quoted exactly, comes from an approved current source, and that the arithmetic is right. They do not prove the sentence is a faithful reading of the quote: an answer can cite the right passage and still drop a condition or pick the right table but argue from the wrong rule. The user interface therefore says "evidence checks passed", not "verified", and always shows the quotes beside the answer. Faithfulness is measured in evaluation (section 10) and, in production, by sampled human review. Fully deterministic validation of free prose is out of scope.
+
+This gives readable answers with checkable evidence: the model writes the sentence, the application proves the quote and the numbers, and a person can confirm the reading at a glance.
 
 ## 7. Privacy and security
 
-**Privacy gate, before anything else.** A question is normalised and screened for South African ID numbers (date and checksum validated), phone numbers, emails, bank and policy identifiers, labelled names and dates of birth, plus operator-supplied patterns. Per bot policy the text is redacted or the request is blocked. The model, the audit log and the UI history only ever receive the screened text. If screening fails, the request fails closed.
+**Privacy gate, before anything else.** A question is normalised and screened for South African ID numbers (date and checksum validated), phone numbers, emails, bank and policy identifiers, labelled names and dates of birth, plus operator-supplied patterns. Per bot policy the text is redacted or the request is blocked. The model, MCP tools, the audit log and the UI history receive only the screened text. If screening fails, the request fails closed.
 
-**Egress policy.** Providers are tagged `on-device` (local Ollama) or `external`. A bot classed `confidential` cannot be started with an external provider; the check runs at start-up and again per request.
+Pattern screening is best effort. It will miss an unlabelled name or a free-text description of someone's health, so it reduces exposure rather than guaranteeing none. That residual risk is why the prototype also keeps question text out of the audit log unless a bot opts in and sets a retention period, and why production adds entity recognition and an in-region redactor. The gate screens what users type; source documents are assumed to be approved business content and are checked for hidden text, not for personal information.
+
+**Egress policy.** Every destination that could receive text is tagged `on-device` or `external`: model providers, MCP servers, and the Ollama endpoint (on-device only when its host is loopback). A bot classed `confidential` cannot start with any external destination; the check runs at start-up and again per request. Framework tracing to third-party services is switched off in code.
+
+Keeping data on the device is one control, not POPIA compliance. Operator agreements, cross-border transfer safeguards, retention and deletion duties, and breach handling are organisational, and are set out condition by condition in `PRODUCTION_ARCHITECTURE.md`.
 
 **Purpose limits.** The assistant gives general product information. It refuses member-specific decisions (will this claim be paid, is this person covered) and says who to ask.
 
 **Untrusted content.** Documents and MCP tool output are data. Hidden text is stripped at ingest, excerpts are wrapped with a data-only notice, the agent has no tools with side effects, and the verifier limits what an injected instruction could achieve to text that must still be quoted from an approved source.
 
-**Audit.** One append-only, hash-chained table: bot, channel, principal, screened question or its digest, retrieved excerpts, citations, calculations, verdict, model, tokens, cost, latency. Retention is per bot, with a prune command. `kestrel audit verify` detects tampering. Blocking a document lists every past answer that cited it.
+**Audit.** One append-only, hash-chained table: bot, channel, principal, screened question or its digest, retrieved excerpts, citations, calculations, outcome, model, tokens, cost, latency. Retention is per bot; pruning writes a checkpoint row that carries the chain forward. `kestrel audit verify` detects an edited or deleted row. This is limited tamper evidence: someone with write access to the file could rebuild the whole chain, so production anchors the chain head in a separate write-once store. Blocking a document lists every past answer that cited it.
 
-**Access.** Every call carries a `Principal` (user, roles, channel). Bots declare the roles they serve. The prototype uses a local principal from settings; production maps it from single sign-on. The seam is real, the identity provider is not.
+**Access.** Every service call carries a `Principal` (user, roles, channel), and the role check applies to every method, not only `ask`: search, section lookup, document listing and audit reads are all scoped to bots the principal may use. The prototype takes the principal from local settings; production maps it from single sign-on. The seam is real, the identity provider is not.
 
 **Secrets.** Keys only in `.env`, never logged, `.env` ignored by git, `kestrel doctor` reports which keys are present without printing them.
 
@@ -225,7 +245,11 @@ One setting selects the model: `KESTREL_MODEL=<provider>:<model>`.
 | `anthropic` | Anthropic API | `ANTHROPIC_API_KEY` |
 | `openai` | OpenAI API | `OPENAI_API_KEY` |
 
-Resolution goes through LangChain chat models, so adding Azure OpenAI, Bedrock or Vertex is a mapping entry, not a new client. Token usage is read from each response and priced from `config/pricing.yaml`, giving a measured cost per query. `kestrel doctor` checks the environment end to end and prints the exact fix for anything missing.
+Resolution goes through LangChain chat models, so adding Azure OpenAI, Bedrock or Vertex is a mapping entry, not a new client.
+
+Tool calling and structured output vary by model, not just by provider. The repository therefore names the models it was tested with, uses tool-call based structured output (the strategy that works alongside other tools on all four providers), retries a malformed answer a bounded number of times, and enforces one total budget per question covering model calls, searches, repairs and wall-clock time. An untested model works if it supports tool calling; `kestrel doctor` says whether the configured model is on the tested list.
+
+The service API is synchronous. It runs the agent on an event loop it owns, so Streamlit reruns and the MCP server's own loop never share loop-bound clients. Token usage is read from each response and priced from `config/pricing.yaml`, giving a measured cost per query. `kestrel doctor` checks the environment end to end and prints the exact fix for anything missing.
 
 ## 9. Seams for scale
 
@@ -248,7 +272,9 @@ Each is a `Protocol` in `contracts.py` with one local implementation:
 
 - `eval/run_eval.py` runs the 15 questions through `AssistantService` for one or more models and runs, and writes a CSV, a JSONL trace, and a completed copy of `KA_Test_Questions.xlsx`.
 - Automatic grading against a gold file is kept separate from the human assessment column; both are reported.
-- Extra checks: retrieval hit rate for the gold sections, the hidden-instruction document, edition conflicts, bot isolation, and personal-information redaction.
+- The gold file holds, per question: the expected status, the facts that must appear, the **conditions that must not be dropped** (for example "lower of", "working days", "accidental death is covered immediately"), statements that must not appear, and the section that should be cited. This is where answer faithfulness is measured.
+- Outcomes are counted separately: correct, partially correct, incorrect, correctly declined, incorrectly declined, withheld by the evidence checks, and retrieval miss (the gold section was never retrieved).
+- Extra checks: the hidden-instruction document, edition conflicts, bot isolation, and personal-information redaction.
 - Results report cost and latency per query per model, and every failure with its cause.
 
 ## 11. Decisions and trade-offs
