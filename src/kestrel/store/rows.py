@@ -65,7 +65,7 @@ def section_rows(document: ParsedDocument) -> list[tuple[object, ...]]:
 
 
 def record_from_row(row: sqlite3.Row) -> DocumentRecord:
-    """A `documents` row (with `section_count` and `finding_count`) as a record."""
+    """A `documents` row (with `section_count`, `finding_count`, `chunk_count` and `table_count`) as a record."""
     return DocumentRecord(
         id=row["id"],
         collection=row["collection"],
@@ -83,6 +83,8 @@ def record_from_row(row: sqlite3.Row) -> DocumentRecord:
         ingested_at=datetime.fromisoformat(row["ingested_at"]),
         section_count=row["section_count"],
         finding_count=row["finding_count"],
+        chunk_count=row["chunk_count"],
+        table_count=row["table_count"],
     )
 
 

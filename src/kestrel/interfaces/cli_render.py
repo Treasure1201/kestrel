@@ -6,12 +6,14 @@ import json
 
 from kestrel.contracts import (
     AskResult,
+    CheckIssue,
     DocumentStatus,
     EvidenceReport,
     Outcome,
     ResolvedCitation,
     SearchHit,
     SearchResult,
+    repaired_detail,
 )
 from kestrel.interfaces.cli_runtime import out, safe
 
@@ -24,12 +26,12 @@ OUTCOME_LABELS: dict[Outcome, str] = {
     Outcome.ERROR: "Error",
 }
 
-EXIT_CODES: dict[Outcome, int] = {
+EXIT_CODES: dict[Outcome, int] = {  # 2 is left to Typer, which uses it for a usage error
     Outcome.ANSWERED: 0,
     Outcome.PARTIAL: 0,
     Outcome.NOT_FOUND: 0,
     Outcome.REFUSED: 0,
-    Outcome.WITHHELD: 2,
+    Outcome.WITHHELD: 3,
     Outcome.ERROR: 1,
 }
 
@@ -37,7 +39,7 @@ SNIPPET_CHARS = 300
 
 
 def exit_code(result: AskResult) -> int:
-    """Process exit code for an answer: 0 for answered, partial, not found and refused."""
+    """Process exit code for an answer: 0 for answered, partial, not found and refused; 3 when withheld; 1 on error."""
     return EXIT_CODES.get(result.outcome, 1)
 
 
@@ -82,17 +84,35 @@ def outcome_line(result: AskResult) -> str:
         suffix = "evidence checks passed"
         if report.repaired:
             suffix += " after one repair"
-        if report.issues:
-            suffix += f", {len(report.issues)} warning(s)"
+        if report.fixed_in_repair:
+            suffix += f" ({len(report.fixed_in_repair)} fixed during repair)"
+        if report.warnings:
+            suffix += f", {len(report.warnings)} warning(s)"
         return f"{label} - {suffix}"
-    return f"{label} - evidence checks found {len(report.issues)} issue(s)"
+    return f"{label} - evidence checks found {len(report.failures)} issue(s)"
+
+
+def _issue_line(issue: CheckIssue, severity: bool = True) -> str:
+    where = f" {issue.label}" if issue.label else ""
+    tag = f"[{issue.severity}] " if severity else ""
+    return f"  - {tag}{issue.check}{where}: {repaired_detail(issue)}"
 
 
 def _issue_lines(report: EvidenceReport) -> list[str]:
+    """Failed checks and warnings, then what the repair turn fixed. Pass or fail comes from `report.passed`."""
+    lines = [_issue_line(i) for i in (*report.failures, *report.warnings)]
+    if report.fixed_in_repair:
+        lines.append("  Fixed during repair:")
+        lines += [f"  {_issue_line(i, severity=False)}" for i in report.fixed_in_repair]
+    return lines
+
+
+def step_lines(result: AskResult) -> list[str]:
+    """`How this was answered`: one numbered line per step."""
     lines = []
-    for issue in report.issues:
-        where = f" {issue.label}" if issue.label else ""
-        lines.append(f"  - [{issue.severity}] {issue.check}{where}: {issue.detail}")
+    for n, step in enumerate(result.steps, start=1):
+        detail = f": {step.detail}" if step.detail else ""
+        lines.append(f"  {n}. [{step.kind}] {step.label}{detail}")
     return lines
 
 
@@ -187,8 +207,13 @@ def _render_trace(result: AskResult) -> None:
     else:
         state = "passed" if report.passed else "failed"
         repaired = " (after repair)" if report.repaired else ""
-        out(f"  Evidence checks: {state}{repaired}; {len(report.issues)} issue(s)")
+        fixed = f"; {len(report.fixed_in_repair)} fixed during repair" if report.fixed_in_repair else ""
+        out(f"  Evidence checks: {state}{repaired}; {len(report.failures)} issue(s){fixed}")
         for line in _issue_lines(report):
+            out(f"  {line}")
+    if result.steps:
+        out(f"  How this was answered ({len(result.steps)} steps):")
+        for line in step_lines(result):
             out(f"  {line}")
     if not result.retrieved:
         out("  Retrieved evidence: none")
@@ -237,4 +262,5 @@ __all__ = [
     "safe",
     "snippet",
     "source_line",
+    "step_lines",
 ]

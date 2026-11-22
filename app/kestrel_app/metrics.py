@@ -108,59 +108,80 @@ def most_cited_sections(records: Iterable[AuditRecord], limit: int = 8) -> list[
     return [CitedSection(doc, sec, locators[(doc, sec)], n) for (doc, sec), n in ranked[:limit]]
 
 
+NOT_RECORDED = "not recorded (an older audit record)"
+"""Shown for audit rows written before the reason and closest section were kept."""
+
+
 @dataclass(frozen=True)
 class UnansweredRow:
-    """One question (as screened) that was not answered, grouped by outcome and reason."""
+    """One question (as screened) that was not answered, with how often and why."""
 
     question: str
     outcome: str
     reason: str
     count: int
     last_asked: datetime
+    closest: str = ""
+    """`filename > locator` of the top-ranked passage retrieved, `nothing retrieved`, or `not recorded` for older rows."""
+
+
+def _has_new_fields(record: AuditRecord) -> bool:
+    entry = record.entry
+    return bool(entry.reason or entry.failed_checks or entry.closest)
 
 
 def _reason(record: AuditRecord) -> str:
+    """Why: the stored reason, or the failed checks of a withheld answer, else the older fallbacks."""
     entry = record.entry
+    if entry.outcome == Outcome.WITHHELD and entry.failed_checks:
+        return "failed checks: " + ", ".join(c.replace("_", " ") for c in entry.failed_checks)
+    if entry.reason:
+        return entry.reason
     if entry.detail:
         return entry.detail
     if entry.error_category is not None:
         return entry.error_category.value.replace("_", " ")
-    return ""
+    if not _has_new_fields(record) and entry.question_text is not None:
+        return NOT_RECORDED
+    return NOT_STORED if entry.question_text is None else ""
 
 
 def unanswered_questions(records: Iterable[AuditRecord]) -> list[UnansweredRow]:
     """Questions that ended not found, refused, withheld or in error, most frequent first.
 
-    Questions whose text was not stored are grouped by digest and shown as `[not stored]`.
+    Grouped by screened question and outcome; the reason and closest section come from
+    the most recent record of the group. Questions whose text was not stored are grouped
+    by digest and shown as `[not stored]`.
     """
-    groups: dict[tuple[str, str, str], list[AuditRecord]] = {}
+    groups: dict[tuple[str, str], list[AuditRecord]] = {}
     for record in ask_records(records):
         entry = record.entry
         if entry.outcome not in UNANSWERED:
             continue
         identity = entry.question_text or entry.question_digest or entry.trace_id
-        key = (identity, entry.outcome.value, _reason(record))
-        groups.setdefault(key, []).append(record)
-    rows = [
-        UnansweredRow(
-            question=items[0].entry.question_text or NOT_STORED,
+        groups.setdefault((identity, entry.outcome.value), []).append(record)
+    rows = []
+    for (_, outcome), items in groups.items():
+        latest = max(items, key=lambda r: (r.created_at, r.id))
+        rows.append(UnansweredRow(
+            question=latest.entry.question_text or NOT_STORED,
             outcome=outcome,
-            reason=reason,
+            reason=_reason(latest),
             count=len(items),
-            last_asked=max(r.created_at for r in items),
-        )
-        for (_, outcome, reason), items in groups.items()
-    ]
+            last_asked=latest.created_at,
+            closest=latest.entry.closest or ("nothing retrieved" if _has_new_fields(latest) else "not recorded"),
+        ))
     return sorted(rows, key=lambda r: (-r.count, -r.last_asked.timestamp()))
 
 
-def unanswered_csv(rows: Sequence[UnansweredRow]) -> str:
-    """CSV text of the unanswered-questions table, for content owners."""
+def unanswered_csv(rows: Sequence[UnansweredRow], *, with_closest: bool = False) -> str:
+    """CSV text of the unanswered-questions table, for content owners; optionally with the closest section."""
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
-    writer.writerow(["question_as_screened", "outcome", "reason", "count", "last_asked"])
+    writer.writerow(["question_as_screened", "outcome", "reason", "count", "last_asked"] + (["closest_section"] if with_closest else []))
     for row in rows:
-        writer.writerow([row.question, row.outcome, row.reason, row.count, row.last_asked.isoformat()])
+        values: list[object] = [row.question, row.outcome, row.reason, row.count, row.last_asked.isoformat()]
+        writer.writerow(values + ([row.closest] if with_closest else []))
     return buffer.getvalue()
 
 

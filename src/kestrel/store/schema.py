@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Keyword index tokenizer: `porter unicode61 remove_diacritics 2`.
 # unicode61 folds case and diacritics and splits on punctuation, so amounts with
@@ -168,7 +168,16 @@ CREATE TABLE meta (
 );
 """
 
-MIGRATIONS: tuple[tuple[int, str], ...] = ((1, _V1),)
+# Schema 2: why a question was not answered. Added columns only, so an existing
+# database is upgraded in place and its rows keep their hashes: an audit row hashes
+# these fields only when they hold a value (see `store.audit.record_hash`).
+_AUDIT_REASONS = """
+ALTER TABLE audit ADD COLUMN reason TEXT;
+ALTER TABLE audit ADD COLUMN failed_checks TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE audit ADD COLUMN closest TEXT;
+"""
+
+MIGRATIONS: tuple[tuple[int, str], ...] = ((1, _V1), (2, _AUDIT_REASONS))
 """(version, DDL) in order. Append new versions; never edit an applied one."""
 
 

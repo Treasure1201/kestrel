@@ -15,51 +15,23 @@ from kestrel_app.components import (
     md,
     plural,
     quote,
+    repaired_line,
     section_label,
     status_badge,
 )
 
 
-def scope_text(result: AskResult) -> str | None:
-    """Which documents the search could rank, in words."""
-    if result.clarification:
-        return "Edition check: the question named editions ambiguously, so nothing was searched"
-    scope = result.scope
-    if scope is None:
-        return None
-    if scope.edition:
-        return f"Scope: the {scope.edition} edition, because the question named it"
-    if scope.effective_on:
-        return f"Scope: editions in force on {scope.effective_on.isoformat()}"
-    statuses = ", ".join(sorted(s.value for s in scope.statuses))
-    return f"Scope: {statuses} documents only"
-
-
 def answer_steps(result: AskResult) -> list[str]:
-    """'How this was answered', built only from what the result records."""
+    """'How this was answered': the steps the service recorded, in order, then the outcome and the audit record."""
+    steps = [f"{step.label}: {step.detail}" if step.detail else step.label for step in result.steps]
+    if not steps:
+        steps.append("The request stopped before any step was taken")
     usage = result.usage
-    steps: list[str] = []
-    if result.redactions:
-        kinds = ", ".join(sorted(set(result.redactions)))
-        steps.append(f"Privacy gate: {plural(len(result.redactions), 'item')} removed ({kinds})")
-    else:
-        steps.append("Privacy gate: no personal information found")
-    if (scope := scope_text(result)) is not None:
-        steps.append(scope)
-    if usage.searches:
-        steps.append(
-            f"Search: {plural(usage.searches, 'search', 'searches')}; "
-            f"{plural(len(result.retrieved), 'excerpt')} shown to the model"
-        )
     if usage.model_calls:
         repairs = f", including {plural(usage.repairs, 'repair turn')}" if usage.repairs else ""
         steps.append(f"Model: {plural(usage.model_calls, 'call')} to {result.model or 'the model'}{repairs}")
-    if result.calculations:
-        steps.append(f"Calculator: {plural(len(result.calculations), 'expression')}")
-    if result.evidence_report is not None:
-        steps.append(f"Evidence checks: {checks_passed_text(result.evidence_report)}")
     if result.outcome == Outcome.WITHHELD:
-        steps.append("Answer withheld: the evidence checks still failed after repair")
+        steps.append(f"Answer withheld: {checks_passed_text(result.evidence_report)}")
     if result.outcome == Outcome.ERROR:
         category = result.error_category.value.replace("_", " ") if result.error_category else "unknown"
         steps.append(f"Request failed: {category}")
@@ -142,6 +114,10 @@ def render(result: AskResult | None) -> None:
         st.caption("This answer cites no sources.")
     section_label("How this was answered")
     st.markdown("\n".join(f"{n}. {md(step)}" for n, step in enumerate(answer_steps(result), start=1)))
+    fixed = result.evidence_report.fixed_in_repair if result.evidence_report else ()
+    if fixed:
+        section_label("Fixed during repair")
+        st.markdown("\n".join(f"- {md(repaired_line(issue))}" for issue in fixed))
     others = uncited(result)
     if others:
         section_label("Also retrieved, not cited")

@@ -121,6 +121,15 @@ CheckName = Literal[
 """`schema` plus the seven evidence checks, in the order DESIGN.md section 6 lists them."""
 
 
+REPAIRED_PREFIX = "Before repair: "
+"""Starts the detail of a warning kept for a problem that the repair turn fixed."""
+
+
+def repaired_detail(issue: CheckIssue) -> str:
+    """The detail of an issue without `REPAIRED_PREFIX`."""
+    return issue.detail.removeprefix(REPAIRED_PREFIX)
+
+
 class CheckIssue(Frozen):
     """One problem found by the evidence checks. Shown to the model in the repair turn."""
 
@@ -138,6 +147,21 @@ class EvidenceReport(Frozen):
     issues: tuple[CheckIssue, ...] = ()
     repaired: bool = False
     """True when a repair turn was used."""
+
+    @property
+    def failures(self) -> tuple[CheckIssue, ...]:
+        """Issues that still fail (severity `error`). `passed` is the verdict; these are why it is False."""
+        return tuple(i for i in self.issues if i.severity == "error")
+
+    @property
+    def fixed_in_repair(self) -> tuple[CheckIssue, ...]:
+        """Problems the repair turn fixed: kept as warnings whose detail starts with `REPAIRED_PREFIX`."""
+        return tuple(i for i in self.issues if i.severity == "warning" and i.detail.startswith(REPAIRED_PREFIX))
+
+    @property
+    def warnings(self) -> tuple[CheckIssue, ...]:
+        """Other warnings, which never fail the checks."""
+        return tuple(i for i in self.issues if i.severity == "warning" and not i.detail.startswith(REPAIRED_PREFIX))
 
 
 class ResolvedCitation(Frozen):
@@ -181,6 +205,24 @@ class Screened(Frozen):
         return bool(self.matched)
 
 
+StepKind = Literal["privacy", "scope", "search", "table", "calculate", "mcp_tool", "checks", "repair"]
+"""What one step of answering did. `checks` and `repair` are the evidence checks and the repair turn."""
+
+
+class AnswerStep(Frozen):
+    """One step of how an answer was produced, in the order it happened.
+
+    Only screened text appears here: search queries and tool arguments come from the
+    model, which only ever saw the screened question.
+    """
+
+    kind: StepKind
+    label: str
+    """Short words for a reader, for example `Searched the documents`."""
+    detail: str = ""
+    """What exactly: the query and number of hits, the table locator and row count, the expression and result."""
+
+
 class AskResult(Frozen):
     """Everything a front end needs to show one answer, and what evaluation records."""
 
@@ -208,3 +250,5 @@ class AskResult(Frozen):
     error_category: ErrorCategory | None = None
     retrieved: tuple[Evidence, ...] = ()
     """Every labelled excerpt and row the model was shown, for display beside the answer."""
+    steps: tuple[AnswerStep, ...] = ()
+    """How the answer was produced, in order: privacy gate, scope, each tool call, checks and repair."""

@@ -34,7 +34,7 @@ from kestrel.store.connection import ConnectionFactory
 GENESIS = "0" * 64
 CHECKPOINT_USER = "system"
 
-_LIST_COLUMNS = ("roles", "redactions", "retrieved", "citations", "calculations")
+_LIST_COLUMNS = ("roles", "redactions", "retrieved", "citations", "calculations", "failed_checks")
 
 
 def canonical_json(value: object) -> str:
@@ -42,9 +42,24 @@ def canonical_json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+_ADDED_FIELDS: dict[str, object] = {"reason": None, "failed_checks": [], "closest": None}
+"""Entry fields added after the first schema, with their empty values. A field that is
+still empty is left out of the hashed JSON, so rows written before it existed keep their
+hashes, while a value written into a newer row is covered by that row's hash."""
+
+
+def hashed_entry(entry: AuditEntry) -> dict[str, object]:
+    """The entry as the JSON that is hashed: every field, except added fields that are empty."""
+    data = entry.model_dump(mode="json")
+    for name, empty in _ADDED_FIELDS.items():
+        if data.get(name) == empty:
+            data.pop(name, None)
+    return data
+
+
 def record_hash(prev_hash: str, record_id: int, created_at: str, entry: AuditEntry) -> str:
     """The hash of one audit row."""
-    body = canonical_json({"id": record_id, "created_at": created_at, "entry": entry.model_dump(mode="json")})
+    body = canonical_json({"id": record_id, "created_at": created_at, "entry": hashed_entry(entry)})
     return hashlib.sha256(f"{prev_hash}\n{body}".encode()).hexdigest()
 
 
@@ -78,6 +93,9 @@ def _entry_from_row(row: sqlite3.Row) -> AuditEntry:
         latency_ms=row["latency_ms"],
         document_id=row["document_id"],
         detail=row["detail"],
+        reason=row["reason"],
+        failed_checks=tuple(json.loads(row["failed_checks"] or "[]")),
+        closest=row["closest"],
     )
 
 
@@ -121,15 +139,17 @@ class SqliteAuditLog:
         conn.execute(
             "INSERT INTO audit (id, created_at, kind, trace_id, bot_id, channel, user, roles, question_text,"
             " question_digest, redactions, retrieved, citations, calculations, outcome, error_category, model,"
-            " input_tokens, output_tokens, cost_usd, latency_ms, document_id, detail, prev_hash, hash)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " input_tokens, output_tokens, cost_usd, latency_ms, document_id, detail, reason, failed_checks,"
+            " closest, prev_hash, hash)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 record_id, created_at, data["kind"], data["trace_id"], data["bot_id"], data["channel"], data["user"],
                 json.dumps(data["roles"]), data["question_text"], data["question_digest"],
                 json.dumps(data["redactions"]), json.dumps(data["retrieved_chunk_ids"]),
                 json.dumps(data["citations"], ensure_ascii=False), json.dumps(data["calculations"], ensure_ascii=False),
                 data["outcome"], data["error_category"], data["model"], data["input_tokens"], data["output_tokens"],
-                data["cost_usd"], data["latency_ms"], data["document_id"], data["detail"], prev_hash, digest,
+                data["cost_usd"], data["latency_ms"], data["document_id"], data["detail"], data["reason"],
+                json.dumps(data["failed_checks"]), data["closest"], prev_hash, digest,
             ),
         )
         conn.executemany(

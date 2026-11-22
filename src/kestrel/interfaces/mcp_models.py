@@ -150,6 +150,7 @@ class AskOutput(_Out):
     model: str = ""
     latency_ms: int = 0
     trace_id: str | None = None
+    steps: int = Field(default=0, description="How many steps (privacy gate, scope, searches, tool calls, checks) produced the answer.")
     error: SafeError | None = None
 
 
@@ -228,6 +229,7 @@ def ask_output(result: AskResult) -> AskOutput:
         model=result.model,
         latency_ms=result.latency_ms,
         trace_id=result.trace_id,
+        steps=len(result.steps),
         error=error,
     )
 

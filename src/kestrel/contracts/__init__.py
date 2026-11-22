@@ -7,8 +7,10 @@ submodules, which exist only to keep each file readable.
 from kestrel.contracts._base import Channel, Classification, Frozen, Locality, Principal, ProviderName
 from kestrel.contracts.answers import (
     LABEL_PATTERN,
+    REPAIRED_PREFIX,
     AgentAnswer,
     AnswerStatus,
+    AnswerStep,
     AskResult,
     CalculationOut,
     CheckIssue,
@@ -19,7 +21,9 @@ from kestrel.contracts.answers import (
     Outcome,
     ResolvedCitation,
     Screened,
+    StepKind,
     Usage,
+    repaired_detail,
 )
 from kestrel.contracts.audit import (
     AuditCitation,
@@ -36,6 +40,8 @@ from kestrel.contracts.audit import (
 from kestrel.contracts.bots import (
     BOT_ID_PATTERN,
     BUILTIN_TOOLS,
+    MAX_EXAMPLE_CHARS,
+    MAX_EXAMPLES,
     BotConfig,
     EvaluationConfig,
     KnowledgeConfig,
@@ -63,6 +69,7 @@ from kestrel.contracts.documents import (
     document_id,
     section_id,
 )
+from kestrel.contracts.editions import EditionComparison, SectionChange, ValueChange
 from kestrel.contracts.evaluation import Assessment, AutoGrade, EvalRecord, GradeCategory, WorkbookLayout
 from kestrel.contracts.protocols import AuditLog, DocumentRepository, Embedder, PrivacyScreen, Retriever, VectorIndex
 from kestrel.contracts.retrieval import (
@@ -88,10 +95,14 @@ __all__ = [
     "BOT_ID_PATTERN",
     "BUILTIN_TOOLS",
     "LABEL_PATTERN",
+    "MAX_EXAMPLES",
+    "MAX_EXAMPLE_CHARS",
     "MAX_QUESTION_CHARS",
     "OPERATOR_ROLE",
+    "REPAIRED_PREFIX",
     "AgentAnswer",
     "AnswerStatus",
+    "AnswerStep",
     "AskResult",
     "Assessment",
     "AssistantService",
@@ -113,11 +124,12 @@ __all__ = [
     "ChunkKind",
     "CitationOut",
     "Classification",
+    "DoctorCheck",
+    "DoctorReport",
     "DocumentRecord",
     "DocumentRepository",
     "DocumentStatus",
-    "DoctorCheck",
-    "DoctorReport",
+    "EditionComparison",
     "Embedder",
     "EvalRecord",
     "EvaluationConfig",
@@ -152,12 +164,15 @@ __all__ = [
     "SearchHit",
     "SearchResult",
     "SearchScope",
+    "SectionChange",
     "SectionView",
+    "StepKind",
     "TableRow",
     "TableRowView",
     "TableView",
     "TextSpan",
     "Usage",
+    "ValueChange",
     "VectorIndex",
     "VectorItem",
     "VectorMatch",
@@ -165,5 +180,6 @@ __all__ = [
     "WorkbookLayout",
     "chunk_id",
     "document_id",
+    "repaired_detail",
     "section_id",
 ]

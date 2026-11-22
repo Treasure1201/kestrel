@@ -4,7 +4,8 @@
 
 One row per run folder (normally one model): automatic grade counts, withheld, errors,
 retrieval misses, cost per question and median latency, plus the human review counts
-when the folder has a completed review. Then a per-question grid of automatic grades.
+when the folder has a completed review. Then a per-question grid of automatic grades,
+and the search-only hit@1/3/6 and MRR of each folder that holds a `retrieval.json`.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pathlib import Path
 from kestrel.contracts import EvalRecord
 
 from eval.artefacts import GRADE_ORDER, RESULTS_JSONL, REVIEW_YAML, read_jsonl, summarise
+from eval.retrieval_eval import CUTOFFS, SEARCH_LIMIT, read_retrieval
 from eval.review import ALLOWED, load_review
 
 SHORT = {
@@ -94,7 +96,34 @@ def build_report(folders: Sequence[Path]) -> str:
             row.append(" / ".join(grades) or "-")
         lines.append("| " + " | ".join(row) + " |")
     lines += ["", "`*` the expected section was never retrieved (retrieval miss)."]
+    lines += _retrieval_lines([folder for folder, _ in loaded])
     return "\n".join(lines) + "\n"
+
+
+def _share(hits: int, n: int) -> str:
+    return f"{hits}/{n} ({hits / n:.0%})" if n else "n/a"
+
+
+def _retrieval_lines(folders: Sequence[Path]) -> list[str]:
+    """The search-only table, from each folder's `retrieval.json` (folders without one are skipped)."""
+    found = [(folder, data) for folder in folders if (data := read_retrieval(folder)) is not None]
+    if not found:
+        return []
+    lines = [
+        "",
+        f"## Retrieval (search only, no model, top {found[0][1].get('search_limit', SEARCH_LIMIT)})",
+        "",
+        "| Run folder | Questions with a target | " + " | ".join(f"Hit@{k}" for k in CUTOFFS) + " | MRR |",
+        "|" + "---|" * (len(CUTOFFS) + 3),
+    ]
+    for folder, data in found:
+        n = int(data.get("questions_with_target") or 0)
+        hits = data.get("hits") or {}
+        mrr = data.get("mrr")
+        cells = [folder.name, str(n), *(_share(int(hits.get(str(k), 0)), n) for k in CUTOFFS), "n/a" if mrr is None else f"{mrr:.3f}"]
+        lines.append("| " + " | ".join(cells) + " |")
+    lines += ["", "Hit@k: share of questions whose expected section ranks k or better. Unanswerable questions have no target section."]
+    return lines
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -14,6 +14,7 @@ from kestrel.contracts import (
     CheckIssue,
     DocumentRecord,
     DocumentStatus,
+    EditionComparison,
     Evidence,
     EvidenceReport,
     Finding,
@@ -101,7 +102,9 @@ class FakeService:
     """In-memory stand-in for `AssistantService`."""
 
     def __init__(self, *, bots=(BOT,), documents=(), findings=(), audit_records=(), ask_result=None,
-                 bots_error: Exception | None = None, documents_error: Exception | None = None) -> None:
+                 bots_error: Exception | None = None, documents_error: Exception | None = None,
+                 comparison: EditionComparison | None = None) -> None:
+        self.comparison = comparison
         self.bots = list(bots)
         self.documents = list(documents)
         self.findings = list(findings)
@@ -152,6 +155,13 @@ class FakeService:
 
     def affected_answers(self, document_id, principal):
         return [r for r in self.audit_records if any(c.document_id == document_id for c in r.entry.citations)]
+
+    def compare_editions(self, bot_id, document_id, principal):
+        if self.comparison is not None:
+            return self.comparison
+        doc = next(d for d in self.documents if d.id == document_id)
+        return EditionComparison(bot_id=bot_id, document_id=document_id, family=doc.family, editions=(doc,),
+                                 note=f"{doc.filename} has no other current or superseded edition to compare with.")
 
     def audit_tail(self, principal, limit=20, bot_id=None):
         return self.audit_records[:limit]

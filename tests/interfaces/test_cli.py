@@ -25,6 +25,7 @@ from kestrel.contracts import (
     DoctorReport,
     DocumentRecord,
     DocumentStatus,
+    EditionComparison,
     Evidence,
     EvidenceReport,
     Finding,
@@ -96,6 +97,8 @@ class FakeService:
         self.doctor_report = DoctorReport(checks=(DoctorCheck(name="database", status="ok", detail="writable"),))
         self.verification = AuditVerification(ok=True, checked=3)
         self.raise_on: dict[str, Exception] = {}
+        self.comparison = EditionComparison(bot_id=BOT, document_id=DOC, editions=(DOCUMENT,), note="no other edition")
+        self.audit_records = [AUDIT]
 
     def _record(self, name: str, *args: Any) -> None:
         self.calls.append((name, args))
@@ -162,9 +165,14 @@ class FakeService:
         self._record("affected_answers", document_id)
         return [AUDIT]
 
+    def compare_editions(self, bot_id: str, document_id: str, principal: Principal) -> EditionComparison:
+        self._record("compare_editions", bot_id, document_id)
+        self._check_bot(bot_id)
+        return self.comparison
+
     def audit_tail(self, principal: Principal, limit: int = 20, bot_id: str | None = None) -> list[AuditRecord]:
         self._record("audit_tail", limit, bot_id)
-        return [AUDIT]
+        return self.audit_records
 
     def audit_verify(self, principal: Principal) -> AuditVerification:
         self._record("audit_verify")
@@ -235,7 +243,7 @@ def test_ask_answered_prints_everything(fake: FakeService) -> None:
         (Outcome.PARTIAL, "Partial", 0),
         (Outcome.NOT_FOUND, "Not in the documents", 0),
         (Outcome.REFUSED, "Refused", 0),
-        (Outcome.WITHHELD, "Withheld", 2),
+        (Outcome.WITHHELD, "Withheld", 3),
         (Outcome.ERROR, "Error (provider_unavailable)", 1),
     ],
 )
@@ -288,7 +296,7 @@ def test_ask_json_round_trips(fake: FakeService) -> None:
 def test_ask_json_keeps_exit_code(fake: FakeService) -> None:
     fake.next_result = make_result(Outcome.WITHHELD)
     result = run("ask", "q", "--json")
-    assert result.exit_code == 2
+    assert result.exit_code == 3  # not 2, which Typer uses for a usage error
     assert AskResult.model_validate_json(result.stdout).outcome == Outcome.WITHHELD
 
 

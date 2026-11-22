@@ -2,12 +2,13 @@
 
     uv run python -m eval.run_eval [--bot kestrel-products] [--models provider:model ...]
         [--runs N] [--questions eval/KA_Test_Questions.xlsx] [--set test|reworded]
-        [--out results/] [--ingest/--no-ingest] [--gold PATH]
+        [--out results/] [--ingest/--no-ingest] [--gold PATH] [--retrieval/--no-retrieval]
 
 For each model a folder `results/<UTC timestamp>_<model-slug>/` receives
 `results.jsonl` (one `EvalRecord` per question per run, appended as it is produced),
 `results.csv`, `summary.json`, `review.yaml` (for the human review) and, for the test
-set, a filled copy of the workbook per run. A failing question is recorded as an error
+set, a filled copy of the workbook per run, plus `retrieval.json` from the search-only
+pass (`eval.retrieval_eval`, skipped with `--no-retrieval`). A failing question is recorded as an error
 and the run continues. The template workbook is never written.
 """
 
@@ -37,6 +38,7 @@ from eval.artefacts import (
 )
 from eval.gold import GoldFile, gold_path_for, load_gold
 from eval.grading import grade
+from eval.retrieval_eval import evaluate_retrieval, format_retrieval, write_retrieval
 from eval.review import create_review
 from eval.workbook import DEFAULT_TEMPLATE, fill_workbook, question_texts
 
@@ -159,8 +161,13 @@ def run_evaluation(
     ingest: bool = False,
     clock: Callable[[], datetime] = utc_now,
     echo: Echo = print,
+    retrieval: bool = False,
 ) -> list[Path]:
-    """Ask every question for every model and run; write the artefacts; return the run folders."""
+    """Ask every question for every model and run; write the artefacts; return the run folders.
+
+    With `retrieval`, the search-only pass (`eval.retrieval_eval`) runs once and its
+    `retrieval.json` is written into every run folder.
+    """
     if runs < 1:
         raise ValueError("runs must be at least 1")
     if ingest:
@@ -173,6 +180,10 @@ def run_evaluation(
         except Exception as exc:  # noqa: BLE001 - asking still records why each answer failed
             echo(f"warning: ingest failed: {getattr(exc, 'user_message', exc)}")
     stamp = clock().strftime("%Y%m%dT%H%M%SZ")
+    found = None
+    if retrieval:
+        found = evaluate_retrieval(service, bot_id=bot_id, gold=gold, principal=principal, set_name=set_name)
+        echo(format_retrieval(found))
     folders: list[Path] = []
     for model in models:
         folder = _folder(Path(out_root), stamp, model.label)
@@ -208,6 +219,8 @@ def run_evaluation(
                 by_id = {r.question_id: r for r in records if r.run == run}
                 fill_workbook(template, folder / workbook_name(model.label, run), by_id)
         create_review(folder, run=1)
+        if found is not None:
+            write_retrieval(folder, found)
         echo(format_summary(summary, f"{model.label} ({folder.name})"))
         folders.append(folder)
     return folders
@@ -223,6 +236,8 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--gold", type=Path, default=None, help="default: the set's gold file")
     parser.add_argument("--out", type=Path, default=Path("results"))
     parser.add_argument("--ingest", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--retrieval", action=argparse.BooleanOptionalAction, default=True,
+                        help="also run the search-only pass and write retrieval.json (default: on)")
     return parser.parse_args(argv)
 
 
@@ -262,7 +277,7 @@ def main(argv: Sequence[str] | None = None, service_factory: Callable[[Any], Any
     folders = run_evaluation(
         service, bot_id=args.bot, models=models, runs=args.runs, questions=questions, gold=gold,
         gold_path=gold_path, principal=principal, out_root=args.out, set_name=args.set_name,
-        template=args.questions, ingest=args.ingest,
+        template=args.questions, ingest=args.ingest, retrieval=args.retrieval,
     )
     for folder in folders:
         print(f"wrote {folder}")

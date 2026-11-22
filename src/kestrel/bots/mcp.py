@@ -15,11 +15,33 @@ from kestrel.llm.catalog import describe_validation_error, read_yaml_mapping
 MCP_SERVERS_FILE = "mcp_servers.yaml"
 
 
+def _resolve_arg(arg: object, root: Path) -> object:
+    """A relative path argument naming an existing file under the repository root, made absolute.
+
+    Anything else (flags, values, paths that do not exist there, paths escaping the root) is unchanged.
+    """
+    if not isinstance(arg, str) or not arg.strip() or arg.startswith("-"):
+        return arg
+    candidate = Path(arg)
+    if candidate.is_absolute():
+        return arg
+    try:
+        resolved = (root / candidate).resolve()
+    except (OSError, ValueError):
+        return arg
+    if resolved.is_file() and resolved.is_relative_to(root):
+        return str(resolved)
+    return arg
+
+
 def load_mcp_servers(config_dir: Path, settings: Settings | None = None) -> dict[str, McpServerSpec]:
     """Approved MCP servers by name. A missing file means no servers.
 
     `${ENV}` references are expanded when `settings` is given. A stdio `command` of
-    `python` is replaced with the running interpreter.
+    `python` is replaced with the running interpreter. A relative path in a stdio
+    server's `args` that names an existing file under the repository root (the parent
+    of the config folder) becomes absolute, so the server starts from any working
+    directory.
 
     Raises:
         ConfigurationError: invalid YAML, a duplicate name, or an invalid entry (with its field).
@@ -39,9 +61,13 @@ def load_mcp_servers(config_dir: Path, settings: Settings | None = None) -> dict
 
         entries = expand(entries, environment(settings), str(path), "servers")
     specs: dict[str, McpServerSpec] = {}
+    root = config_dir.resolve().parent
     for index, entry in enumerate(entries):
-        if isinstance(entry, dict) and entry.get("transport") == "stdio" and entry.get("command") == "python":
-            entry = {**entry, "command": sys.executable}
+        if isinstance(entry, dict) and entry.get("transport") == "stdio":
+            if entry.get("command") == "python":
+                entry = {**entry, "command": sys.executable}
+            if isinstance(entry.get("args"), list):
+                entry = {**entry, "args": [_resolve_arg(arg, root) for arg in entry["args"]]}
         try:
             spec = McpServerSpec.model_validate(entry)
         except ValidationError as exc:

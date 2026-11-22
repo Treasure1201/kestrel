@@ -9,8 +9,8 @@ from kestrel.contracts import OPERATOR_ROLE, AssistantService, AuditRecord, BotS
 from kestrel_app import eval_view, metrics, runtime
 from kestrel_app.components import fmt_cost, fmt_latency, fmt_share, plural, section_label
 
-USAGE_LIMIT = 2000
-"""Audit records read for the live usage tab (the most recent ones)."""
+USAGE_LIMIT = 500
+"""Audit records read for the live usage tab (the most recent ones): the most the service returns at once."""
 
 
 def _tail(svc: AssistantService, who: Principal, bot_id: str | None, limit: int) -> list[AuditRecord]:
@@ -68,7 +68,7 @@ def _live_usage(svc: AssistantService, who: Principal, bot: BotSummary, everyone
         st.space("stretch")
         st.download_button(
             "Export for content owners",
-            metrics.unanswered_csv(rows),
+            metrics.unanswered_csv(rows, with_closest=True),
             file_name="unanswered_questions.csv",
             mime="text/csv",
             disabled=not rows,
@@ -81,9 +81,10 @@ def _live_usage(svc: AssistantService, who: Principal, bot: BotSummary, everyone
         [
             {
                 "Question, as screened": r.question,
-                "Outcome": r.outcome.replace("_", " "),
-                "Why": r.reason or "not recorded",
                 "Asked": r.count,
+                "Outcome": r.outcome.replace("_", " "),
+                "Why": r.reason,
+                "Closest section": r.closest,
                 "Last asked": r.last_asked.strftime("%Y-%m-%d %H:%M"),
             }
             for r in rows
@@ -92,13 +93,14 @@ def _live_usage(svc: AssistantService, who: Principal, bot: BotSummary, everyone
     )
     st.caption(
         '"Not in documents" rows are content gaps for the business. "Withheld" rows are engineering '
-        f"defects and are reviewed first. {metrics.NOT_STORED} means this assistant keeps only a digest of the question."
+        f"defects and are reviewed first. {metrics.NOT_STORED} means this assistant keeps only a digest of the "
+        "question, so a reason written from it is not kept either. The closest section is the top-ranked passage retrieved."
     )
 
 
 def _audit_trail(svc: AssistantService, who: Principal, bot: BotSummary, everyone: bool) -> None:
     with st.container(horizontal=True, vertical_alignment="bottom"):
-        limit = st.selectbox("Records to show", [50, 200, 1000], key="audit_limit")
+        limit = st.selectbox("Records to show", [50, 200, USAGE_LIMIT], key="audit_limit")
         st.space("stretch")
         verify = st.button("Verify chain", icon=":material/link:", disabled=not runtime.is_operator(who))
     if not runtime.is_operator(who):

@@ -96,7 +96,9 @@ def ingest(bot: BotOption = None, all_bots: AllBots = False) -> None:
 
 @app.command()
 @rt.handle_errors
-def bots() -> None:
+def bots(
+    examples: Annotated[bool, typer.Option("--examples", help="Also list each bot's example questions.")] = False,
+) -> None:
     """Bots you may use."""
     settings = rt.get_settings()
     summaries = rt.get_service(settings).list_bots(rt.principal(settings))
@@ -109,6 +111,13 @@ def bots() -> None:
         if b.description:
             rt.out(f"    {' '.join(b.description.split())}")
         rt.out(f"    classification: {b.classification}; model: {b.model}; collections: {', '.join(b.collections)}")
+        if examples:
+            if not b.examples:
+                rt.out("    no example questions")
+            else:
+                rt.out("    example questions:")
+                for example in b.examples:
+                    rt.out(f'      kestrel ask "{example}" --bot {b.id}')
 
 
 @app.command()
@@ -117,10 +126,10 @@ def ask(
     question: Annotated[str, typer.Argument(help='The question, in quotes: kestrel ask "your question"')],
     bot: BotOption = None,
     model: Annotated[str | None, typer.Option("--model", "-m", help="Override the model, as provider:model.")] = None,
-    trace: Annotated[bool, typer.Option("--trace", help="Also show retrieved evidence and check details.")] = False,
+    trace: Annotated[bool, typer.Option("--trace", help="Also show the steps taken, retrieved evidence and check details.")] = False,
     as_json: Annotated[bool, typer.Option("--json", help="Print the full result as JSON and nothing else.")] = False,
 ) -> None:
-    """Ask one question. Exit 0 when answered, partial, not found or refused; 2 when withheld; 1 on error."""
+    """Ask one question. Exit 0 when answered, partial, not found or refused; 3 when withheld; 1 on error."""
     if not question.strip():
         rt.fail("Error: the question is empty.")
     settings = rt.get_settings()

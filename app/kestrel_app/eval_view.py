@@ -93,6 +93,26 @@ def _detail(record: EvalRecord, review: results.HumanReview | None) -> None:
                     st.caption(review.comment)
 
 
+def _retrieval(selected: list[RunFolder], root: Path) -> None:
+    """Three bars, hit@1, hit@3 and hit@6: from the newest selected folder with a search-only pass, else the newest anywhere."""
+    folder = next((f for f in selected if f.retrieval is not None and f.retrieval.targets), None)
+    latest = (folder.name, folder.retrieval) if folder is not None and folder.retrieval is not None else results.latest_retrieval(root)
+    section_label("Retrieval hit rate, search only")
+    if latest is None:
+        st.caption("No search-only pass has been run yet. Run `uv run python -m eval.retrieval_eval` (or `eval.run_eval`).")
+        return
+    name, found = latest
+    for cutoff in (1, 3, 6):
+        share = found.share(cutoff) or 0.0
+        st.progress(share, text=f"Hit@{cutoff}: {found.hits.get(cutoff, 0)} of {found.targets} ({share:.0%})")
+    mrr = f" MRR {found.mrr:.3f}." if found.mrr is not None else ""
+    st.caption(
+        f"From {name}: where the expected section ranked among the top {found.search_limit} search results, "
+        f"with no model.{mrr} {found.targets} questions have a target section; the {found.without_target} "
+        "unanswerable questions have no target section and are not counted."
+    )
+
+
 def render(root: Path) -> None:
     """Draw the tab from the run folders under `root`."""
     folders = results.discover_runs(root)
@@ -101,6 +121,8 @@ def render(root: Path) -> None:
             f"No evaluation runs found under `{root.as_posix()}/`. Run `uv run python -m eval.run_eval` to create one.",
             icon=":material/science:",
         )
+        if results.latest_retrieval(root) is not None:
+            _retrieval([], root)
         return
     for folder in folders:
         if folder.problem:
@@ -115,6 +137,7 @@ def render(root: Path) -> None:
 
     st.dataframe(_summary_rows(selected), hide_index=True)
     st.caption("Grades are automatic checks against the gold file, not human assessments. Retrieval hit rate counts questions whose expected section was retrieved.")
+    _retrieval(selected, root)
 
     runs = sorted({run for f in selected for run in f.runs})
     run = st.selectbox("Run number", runs, key="eval_run") if len(runs) > 1 else runs[0]

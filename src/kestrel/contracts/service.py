@@ -23,6 +23,7 @@ from kestrel.contracts._base import Frozen, Principal
 from kestrel.contracts.answers import AskResult
 from kestrel.contracts.audit import AuditRecord, AuditVerification, BotSummary, DoctorReport, PruneResult
 from kestrel.contracts.documents import DocumentRecord, DocumentStatus, Finding
+from kestrel.contracts.editions import EditionComparison
 from kestrel.contracts.retrieval import SearchResult, SectionView
 
 OPERATOR_ROLE = "staff"
@@ -102,6 +103,14 @@ class AssistantService(Protocol):
 
     def affected_answers(self, document_id: str, principal: Principal) -> list[AuditRecord]:
         """Past answers that cited a document, most recent first."""
+        ...
+
+    def compare_editions(self, bot_id: str, document_id: str, principal: Principal) -> EditionComparison:
+        """What changed between a document and the other edition of its family it supersedes, or is superseded by.
+
+        Deterministic: sections are aligned by normalised heading path and numbers are
+        compared after normalisation. No model is called.
+        """
         ...
 
     def audit_tail(self, principal: Principal, limit: int = 20, bot_id: str | None = None) -> list[AuditRecord]:

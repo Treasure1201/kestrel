@@ -152,6 +152,10 @@ class DocumentRepository(Protocol):
         """The table of a table section, every row numbered from 1."""
         ...
 
+    def list_sections(self, document_id: str) -> list[SectionView]:
+        """Every section of a document in reading order (empty for an unknown id)."""
+        ...
+
     def findings(self, document_ids: Collection[str]) -> list[Finding]:
         """Scanner findings for the given documents."""
         ...

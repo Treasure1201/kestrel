@@ -19,6 +19,7 @@ from kestrel_app.components import (
     md,
     outcome_badge,
     plural,
+    repaired_line,
 )
 
 CATEGORY_TEXT: dict[ErrorCategory, str] = {
@@ -62,9 +63,15 @@ def _failed_list(result: AskResult) -> None:
         st.markdown(f"- {md(issue_line(issue))}")
 
 
+def _fixed_list(result: AskResult) -> None:
+    """Problems the repair turn fixed: shown as fixed, never as failures."""
+    fixed = result.evidence_report.fixed_in_repair if result.evidence_report else ()
+    if fixed:
+        st.caption("Fixed during repair: " + "; ".join(repaired_line(issue) for issue in fixed))
+
+
 def _body(result: AskResult) -> None:
     outcome = result.outcome
-    failed = failed_checks(result.evidence_report)
     if outcome == Outcome.WITHHELD:
         st.warning(
             "The answer was withheld, so it is not shown: these evidence checks still failed after repair.",
@@ -73,9 +80,10 @@ def _body(result: AskResult) -> None:
         _failed_list(result)
     elif result.answer:
         st.markdown(md(result.answer))
-        if failed:
+        if result.evidence_report is not None and not result.evidence_report.passed:
             st.warning("Shown with a warning: these evidence checks failed. Read the quotes before relying on it.")
             _failed_list(result)
+    _fixed_list(result)
     if result.clarification:
         st.info(result.clarification, icon=":material/help:")
     if result.reason and outcome in {Outcome.NOT_FOUND, Outcome.REFUSED, Outcome.ERROR, Outcome.WITHHELD, Outcome.PARTIAL}:

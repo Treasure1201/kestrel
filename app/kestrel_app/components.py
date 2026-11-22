@@ -11,7 +11,7 @@ from collections.abc import Iterable
 
 import streamlit as st
 
-from kestrel.contracts import AskResult, CheckIssue, DocumentStatus, EvidenceReport, Outcome
+from kestrel.contracts import AskResult, CheckIssue, DocumentStatus, EvidenceReport, Outcome, repaired_detail
 
 CSS = """
 <style>
@@ -123,8 +123,15 @@ def outcome_badge(outcome: Outcome) -> None:
 
 
 def failed_checks(report: EvidenceReport | None) -> list[CheckIssue]:
-    """Issues with severity `error`."""
-    return [i for i in report.issues if i.severity == "error"] if report else []
+    """Issues that still fail. Warnings, including problems fixed by the repair turn, are not failures."""
+    return list(report.failures) if report else []
+
+
+def repaired_line(issue: CheckIssue) -> str:
+    """A problem the repair turn fixed, in words, without the stored `Before repair:` marker."""
+    name = CHECK_LABELS.get(issue.check, issue.check)
+    where = f" ({issue.label})" if issue.label else ""
+    return f"{name}{where}: {repaired_detail(issue)}"
 
 
 def evidence_badge(result: AskResult) -> None:

@@ -202,3 +202,7 @@ class DocumentRecord(Frozen):
     ingested_at: datetime
     section_count: int = 0
     finding_count: int = 0
+    chunk_count: int = 0
+    """Searchable chunks, including one per table row."""
+    table_count: int = 0
+    """Sections that hold a table."""
