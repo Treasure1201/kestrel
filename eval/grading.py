@@ -45,9 +45,13 @@ _DECLINES = {Outcome.NOT_FOUND, Outcome.REFUSED}
 _ANSWERS = {Outcome.ANSWERED, Outcome.PARTIAL}
 
 
-def _source_matches(sources: tuple[ExpectedSource, ...], filename: str, locator: str) -> bool:
+def source_matches(sources: tuple[ExpectedSource, ...], filename: str, locator: str) -> bool:
+    """True when a passage's filename and locator match one of the expected sources (also used by retrieval_eval)."""
     name, place = locator_key(filename), locator_key(locator)
     return any(locator_key(s.document) in name and locator_key(s.locator) in place for s in sources)
+
+
+_source_matches = source_matches
 
 
 def _missing(text: str, requirements: tuple[Requirement, ...]) -> tuple[str, ...]:
