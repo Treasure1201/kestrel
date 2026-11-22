@@ -1,0 +1,33 @@
+# Approved documents of the staff-policies collection (fictitious demonstration content).
+# Approval binds to exact bytes: a file whose SHA-256 no longer matches drops to `pending`
+# and is not searched until this file is updated. Re-hash after any edit, for example:
+#   uv run python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" <file>
+# Hashes verified against data/source/staff-policies/ (files are stored with LF line endings).
+collection: staff-policies
+documents:
+  - filename: KA_Staff_Leave_Policy.md
+    sha256: 3d6e28e2983d2962beb174ffc3037e7ca156067e888918cf50123cc40a9b02eb
+    label: Staff Leave Policy (Version 2026.1, fictitious sample)
+    family: staff-leave-policy
+    edition: "2026.1"
+    effective_from: 2026-01-01
+    approved: true
+    approved_by: demo-maintainers
+
+  - filename: KA_Remote_Work_and_Equipment_Policy.md
+    sha256: cb3f08ab962da3d699a286621c434ccc2fa48579d0ccd63a9e1e5f1b49614d9a
+    label: Remote Work and Equipment Policy (Version 2026.1, fictitious sample)
+    family: remote-work-policy
+    edition: "2026.1"
+    effective_from: 2026-01-01
+    approved: true
+    approved_by: demo-maintainers
+
+  - filename: KA_Expenses_Policy.md
+    sha256: e36a4212835710aebd3717e84b0726c0aedd5c841970427d55d859546fb3c95d
+    label: Business Expenses Policy (Version 2026.1, fictitious sample)
+    family: expenses-policy
+    edition: "2026.1"
+    effective_from: 2026-01-01
+    approved: true
+    approved_by: demo-maintainers

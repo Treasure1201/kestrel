@@ -1,0 +1,113 @@
+# Gold answers for the staff-policies demonstration bot.
+#
+# The three source documents are fictitious sample content written for this
+# demonstration (data/source/staff-policies/). Same format and matching rules as
+# bots/kestrel-products/eval/gold.yaml (see eval/gold.py and eval/normalise.py).
+#
+# Run:  uv run python -m eval.run_eval --bot staff-policies --set reworded \
+#         --gold bots/staff-policies/eval/gold.yaml --models ollama:gpt-oss:20b
+# (`--set reworded` makes the runner read the questions from this file instead of
+# the product bot's workbook.)
+
+version: 1
+bot: staff-policies
+question_set: reworded
+
+questions:
+  Q1:
+    question: How many days of annual leave does an employee with 7 completed years of service get each year?
+    status: answered
+    must_include:
+      - label: 21 working days
+        any: ["21 working days", "21 days"]
+    must_not_include:
+      - label: a neighbouring band's entitlement
+        any: ["18 working days", "25 working days", "18 days", "25 days"]
+        unless_clause_has: ["2 to 4", "10 years", "band b", "band d", "or more"]
+    sources:
+      - document: KA_Staff_Leave_Policy.md
+        locator: section 2 "Annual leave", table 1
+    note: Leave policy 2.1 table, band C (5 to 9 years) - 21 working days.
+
+  Q2:
+    question: Who qualifies for the home-office allowance, and how much is it?
+    status: answered
+    must_include:
+      - label: R450 per month
+        any: ["R450"]
+      - label: at least 2 remote days per week on average
+        any: ["2 days per week", "2 days a week", "two days per week", "two days a week", "2 days"]
+    conditions:
+      - label: not paid during probation
+        any: ["probation"]
+      - label: monthly amount
+        any: ["per month", "a month", "monthly"]
+    sources:
+      - document: KA_Remote_Work_and_Equipment_Policy.md
+        locator: section 5 "Home-office allowance"
+    note: Remote work policy 5.1 and 5.3.
+
+  Q3:
+    question: Who has to approve an expense claim that totals R6 500?
+    status: answered
+    must_include:
+      - label: the head of department
+        any: ["head of department", "head of the department", "department head"]
+    must_not_include:
+      - label: another band's approver presented as the answer
+        any: ["re:(approved|approve|approver)[^.;]{0,40}(line manager|chief financial officer|cfo)"]
+        unless_clause_has: ["up to R2 000", "more than R10 000", "above R10 000", "over R10 000", "not"]
+    sources:
+      - document: KA_Expenses_Policy.md
+        locator: section 4 "Approval limits", table 1
+    note: Expenses policy 4.1 table - R2 000.01 to R10 000 is approved by the head of department.
+
+  Q4:
+    question: Does Kestrel Assurance pay for employees' gym membership?
+    status: not_found
+    must_not_include:
+      - label: a statement that gym membership is or is not paid, presented as fact
+        any:
+          - "re:(does not|doesn't|will not|won't) (pay|reimburse|cover)[^.;]{0,30}gym"
+          - "re:gym[^.;]{0,40}(is|are) (not )?(paid|reimbursed|covered)"
+          - "re:(pays|reimburses|covers)[^.;]{0,30}gym"
+        unless_clause_has: ["do not say", "does not say", "do not mention", "does not mention", "not mentioned", "no mention", "not covered by the", "no information", "cannot find", "could not find"]
+    note: None of the three policies mentions gym membership. The right answer says the policies do not say and suggests People and Culture.
+
+  Q5:
+    question: Using this year's calendar, how many working days are there from 11 March to 20 March, and is that enough notice for five days of annual leave starting on 23 March?
+    status: answered
+    must_include:
+      - label: the policy's notice of at least 10 working days
+        any: ["10 working days"]
+      - label: 8 working days counted (for 2026)
+        any: ["8 working days", "eight working days"]
+    conditions:
+      - label: at least (a minimum)
+        any: ["at least", "minimum", "no later than", "or more"]
+    sources:
+      - document: KA_Staff_Leave_Policy.md
+        locator: section 2 "Annual leave", part 2
+    note: >
+      Needs the workday-calendar MCP tools - today (to know the year) and
+      working_days_between. In 2026, 11 March is a Wednesday and 11 to 20 March holds
+      8 working days, so it is short of the 10 working days in leave policy 2.4. The
+      count changes with the year the evaluation runs in. The question avoids writing
+      the year because a full date or a bare year makes the scope resolver ask whether
+      it means an edition.
+
+  Q6:
+    question: How long do I have to submit an expense claim?
+    status: answered
+    must_include:
+      - label: within 30 days
+        any: ["30 days"]
+    conditions:
+      - label: counted from the date the expense was incurred
+        any: ["incurred", "date of the expense", "date the expense", "spent", "paid"]
+      - label: claims older than 90 days are not paid without the Finance Manager's exception
+        any: ["90 days"]
+    sources:
+      - document: KA_Expenses_Policy.md
+        locator: section 3 "Submitting a claim"
+    note: Expenses policy 3.1 and 3.2.

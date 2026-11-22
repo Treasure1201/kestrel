@@ -1,0 +1,38 @@
+# A demonstration bot over three fictitious internal policies. It shows that a second
+# bot is configuration only: its own documents, audience, prompt, skill, MCP server
+# and a stricter privacy and model policy than the product bot.
+id: staff-policies
+name: Staff Policy Helper
+description: Answers Kestrel Assurance employees' questions about leave, remote work and expenses (fictitious demonstration policies).
+audience: [staff]                              # only principals with the `staff` role see or use this bot
+
+knowledge:
+  collections: [staff-policies]                # searches only data/source/staff-policies/
+  approval: required                           # a document must be listed, with its SHA-256, in manifest.yaml
+  manifest: manifest.yaml
+  default_scope: current
+
+prompt: prompt.md
+tools: [search_documents, get_table, calculate]
+mcp_servers: [workday-calendar]                # on-device, read-only; approved in config/mcp_servers.yaml
+skills: [skills/]                              # skills/<name>/SKILL.md, read-only
+
+model:
+  default: ollama:gpt-oss:20b                  # local Ollama on this machine
+  allowed_providers: [ollama]                  # hosted providers are refused before any text is sent
+  max_model_calls: 12
+  max_searches: 6
+  timeout_s: 300                               # local models are slower than hosted ones
+
+privacy:
+  classification: confidential                 # on-device destinations only: models and MCP servers
+  on_personal_information: block               # a question with personal details is refused, not redacted
+  audit_question_text: none                    # the audit log keeps only a digest of the question
+  retention_days: 30
+
+verification:
+  on_failure: withhold
+  max_repairs: 1
+
+evaluation:
+  gold: eval/gold.yaml
