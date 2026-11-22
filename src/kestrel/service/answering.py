@@ -76,14 +76,20 @@ async def answer_question(
         )
     outcome.answer = turn.answer
     outcome.issues = _check(question, turn.answer, ctx, scope)
+    earlier: list[CheckIssue] = []
     while not outcome.passed and ctx.budget.repairs < ctx.budget.max_repairs:
         repaired = await _repair(agent, turn, outcome.issues, ctx.budget)
         if repaired is None or repaired.answer is None:
             break
+        earlier += [i for i in outcome.issues if i.severity == "error"]
         turn = repaired
         outcome.answer = repaired.answer
         outcome.issues = _check(question, repaired.answer, ctx, scope)
         outcome.repaired = True
+    # Issues the repair turn fixed are kept as warnings, so the audit shows why a repair happened.
+    outcome.issues += [
+        i.model_copy(update={"severity": "warning", "detail": f"Before repair: {i.detail}"}) for i in earlier
+    ]
     return outcome
 
 

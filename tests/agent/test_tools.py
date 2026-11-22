@@ -32,8 +32,11 @@ class FakeRetriever:
 
     def search(self, query: str, scope: SearchScope, limit: int) -> SearchResult:
         self.queries.append(query)
+        if "whole" in query:
+            return SearchResult(hits=(_hit(9, kind="table", text="Band | Limit"),))
         if "table" in query:
-            return SearchResult(hits=(_hit(9, kind="table_row", text="Band: 3; Limit: R 3 500 000"),))
+            row = _hit(9, kind="table_row", text="Band: 3; Limit: R 3 500 000").model_copy(update={"row_index": 3, "chunk_id": "d1:s009:r03"})
+            return SearchResult(hits=(row,))
         if "nothing" in query:
             return SearchResult()
         return SearchResult(hits=(_hit(1), _hit(2)))
@@ -100,6 +103,18 @@ def test_table_hits_point_to_get_table_and_rows_are_labelled(ctx: RequestContext
     assert ctx.evidence["c1.r2"].text == "Band: 2; Limit: R 2 000 000"
     assert ctx.evidence["c1.r2"].row is not None
     assert "[c1.r1]" in tools["get_table"].invoke({"label": "c1.r2"})  # a row label reaches the same table
+
+
+def test_whole_table_hit_is_shown_as_labelled_rows(ctx: RequestContext) -> None:
+    tools, _ = _tools(ctx)
+    found = tools["search_documents"].invoke({"query": "whole table"})
+    assert "cite a row label such as c1.r1" in found
+    assert "[c1.r2] Band: 2; Limit: R 2 000 000" in found
+    assert ctx.evidence["c1.r3"].row is not None
+    again = tools["get_table"].invoke({"label": "c1"})
+    assert "[c1.r1]" in again
+    row_hit = tools["search_documents"].invoke({"query": "table row"})
+    assert "[c2] is row c1.r3 of the table shown above: cite it as c1.r3." in row_hit
 
 
 def test_get_table_errors(ctx: RequestContext) -> None:

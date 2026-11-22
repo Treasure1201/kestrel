@@ -20,7 +20,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 
 from kestrel.agent.calculator import CalculationError, evaluate
 from kestrel.agent.context import RequestContext
-from kestrel.contracts import BUILTIN_TOOLS, Retriever, SearchHit
+from kestrel.contracts import BUILTIN_TOOLS, Retriever, SearchHit, TableView
 from kestrel.errors import KestrelError
 
 UNTRUSTED_NOTICE = (
@@ -37,6 +37,29 @@ def _source_line(label: str, hit: SearchHit) -> str:
     if hit.kind in {"table", "table_row"}:
         line += f" (part of a table: call get_table(\"{label}\") to read every row)"
     return line
+
+
+def _table_rows(ctx: RequestContext, base: str, table: TableView) -> str:
+    labels = [ctx.register_row(base, row, table.header) for row in table.rows]
+    return "\n".join(f"[{label}] {row.as_text(table.header)}" for label, row in zip(labels, table.rows, strict=True))
+
+
+def _whole_table(ctx: RequestContext, retriever: Retriever, label: str, hit: SearchHit) -> str:
+    """A hit that is a whole table is shown as labelled rows straight away, so a row can be cited."""
+    try:
+        table = retriever.get_table(hit.section_id, ctx.scope)
+    except KestrelError:
+        table = None
+    if table is None or not table.rows:
+        return f"{_source_line(label, hit)}\n{hit.text}"
+    if hit.section_id in ctx.tables_fetched:
+        return f"[{label}] the table shown above as {ctx.tables_fetched[hit.section_id]} (cite its row labels)"
+    ctx.tables_fetched[hit.section_id] = label
+    edition = f", edition {hit.edition}" if hit.edition else ""
+    return (
+        f"[{label}] {hit.filename} > {hit.locator} (status: {hit.status.value}{edition}) (whole table: cite a row label "
+        f"such as {label}.r1, not {label})\nColumns: {' | '.join(table.header)}\n{_table_rows(ctx, label, table)}"
+    )
 
 
 def search_documents_tool(ctx: RequestContext, retriever: Retriever) -> BaseTool:
@@ -70,10 +93,15 @@ def search_documents_tool(ctx: RequestContext, retriever: Retriever) -> BaseTool
         blocks, repeated = [], []
         for hit in result.hits:
             label, new = ctx.register_hit(hit)
-            if new:
-                blocks.append(f"{_source_line(label, hit)}\n{hit.text}")
-            else:
+            if not new:
                 repeated.append(label)
+            elif hit.kind == "table":
+                blocks.append(_whole_table(ctx, retriever, label, hit))
+            elif hit.kind == "table_row" and hit.section_id in ctx.tables_fetched and hit.row_index:
+                row_label = f"{ctx.tables_fetched[hit.section_id]}.r{hit.row_index}"
+                blocks.append(f"[{label}] is row {row_label} of the table shown above: cite it as {row_label}.")
+            else:
+                blocks.append(f"{_source_line(label, hit)}\n{hit.text}")
         if not blocks:
             return (
                 f"No new excerpts: every result was already shown ({', '.join(repeated)}). Stop searching and answer "
@@ -106,11 +134,8 @@ def get_table_tool(ctx: RequestContext, retriever: Retriever) -> BaseTool:
         if table is None or not table.rows:
             return f"{base} is not part of a table. Cite it as {base}."
         base = ctx.tables_fetched.setdefault(hit.section_id, base)
-        lines = [ctx.register_row(base, row, table.header) for row in table.rows]
         edition = f", edition {table.edition}" if table.edition else ""
-        body = "\n".join(
-            f"[{row_label}] {row.as_text(table.header)}" for row_label, row in zip(lines, table.rows, strict=True)
-        )
+        body = _table_rows(ctx, base, table)
         return (
             f"{UNTRUSTED_NOTICE}\n\nTable from [{base}] {table.filename} > {table.locator} "
             f"(status: {table.status.value}{edition})\nColumns: {' | '.join(table.header)}\n{body}\n\n"

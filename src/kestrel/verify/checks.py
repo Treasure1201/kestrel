@@ -204,14 +204,15 @@ def check_calculations(ctx: _Context) -> list[CheckIssue]:
 def check_numbers(ctx: _Context) -> list[CheckIssue]:
     """Check 4: every number in the answer and caveats traces to a cited excerpt, the question or a calculation."""
     issues: list[CheckIssue] = []
-    support = numbers_in(ctx.question) | ctx.verified
+    # A rate written as 75% also supports 0.75 in the answer, as in "0.75 x R40 000".
+    support = numbers_in(ctx.question) | percent_rates(ctx.question) | ctx.verified
     uncited: dict[str, set[Decimal]] = {}
     cited_labels = {label for label, _ in ctx.cited}
     for label, evidence in ctx.evidence.items():
         if label in cited_labels or ctx.declined:
-            support |= _evidence_numbers(evidence)
+            support |= _operand_support(evidence)
         else:
-            uncited[label] = _evidence_numbers(evidence)
+            uncited[label] = _operand_support(evidence)
     texts = [("answer", ctx.answer.answer)] + [("caveats", caveat) for caveat in ctx.answer.caveats]
     reported: set[Decimal] = set()
     for where, text in texts:
@@ -296,5 +297,6 @@ def repair_message(issues: Sequence[CheckIssue]) -> str:
         "The application checked your answer against the excerpts and found these problems:\n"
         + "\n".join(lines)
         + "\nFix them and give your final answer again with the answer tool. Use only labels and words from the "
-        "excerpts you were shown. If the excerpts do not support an answer, use status not_found with a reason."
+        "excerpts you were shown; removing an unsupported detail is often the right fix. If the excerpts do not "
+        "support an answer, use status not_found with a reason. Do not mention these checks or the earlier draft."
     )

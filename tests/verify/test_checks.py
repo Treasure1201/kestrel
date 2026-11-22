@@ -158,6 +158,15 @@ def test_numbers_in_the_source_title_and_locator_are_allowed() -> None:
     assert checks(ans) == []
 
 
+def test_a_percentage_supports_its_fraction_form() -> None:
+    ans = answer(
+        "The benefit is 0.75 x R40 000 = R30 000 a month.",
+        [("c4", "75% of monthly salary")],
+        calculations=[("0.75 * 40000", "30000", "c4")],
+    )
+    assert checks(ans, question="Salary R40 000?") == []
+
+
 # 5. calculations -------------------------------------------------------------------------
 
 
