@@ -1,0 +1,217 @@
+# Reworded and closely related questions, with gold answers.
+#
+# WRITTEN BEFORE ANY EVALUATION RUN. No model had answered any question when this file
+# was written, so it was not tuned to observed answers. The 15 workbook questions were
+# also the development set; this file is the nearest thing to an independent check.
+#
+# Written only from the six documents in data/source/kestrel-products/. Same format
+# and matching rules as bots/kestrel-products/eval/gold.yaml. Ids start at Q101 so they
+# can never be confused with the workbook's Q1..Q15.
+
+version: 1
+bot: kestrel-products
+question_set: reworded
+written_before_first_run: true
+
+x-superseded-markers: &superseded
+  - "2025"
+  - "2025.1"
+  - previous
+  - prior
+  - superseded
+  - earlier edition
+  - older
+  - former
+  - replaced
+  - no longer
+  - old guide
+  - old edition
+
+questions:
+  Q101:
+    question: What is the highest amount of group life cover any single member can be insured for?
+    paraphrase_of: Q1
+    status: answered
+    must_include:
+      - label: R25 000 000
+        any: ["R25 000 000"]
+    must_not_include:
+      - label: the 2025 edition's R20 000 000 presented as current
+        any: ["R20 000 000"]
+        unless_clause_has: *superseded
+    sources:
+      - document: KA_Group_Life_Product_Guide_2026.docx
+        locator: section 2.2 "Maximum cover"
+    note: 2026 guide s2.2.
+
+  Q102:
+    question: How soon after a member dies does Kestrel have to be told about the death?
+    paraphrase_of: Q12
+    status: answered
+    must_include:
+      - label: 6 months
+        any: ["6 month"]
+    conditions:
+      - label: counted from the date of death
+        any: ["re:(of|after|from|following) (the )?(date of )?(the )?(member's |a member's |their )?death", "date of death", "of the death", "death date", "dies", "died"]
+    must_not_include:
+      - label: the 2025 edition's 12 months presented as current
+        any: ["12 month"]
+        unless_clause_has: *superseded
+    sources:
+      - document: KA_Group_Life_Product_Guide_2026.docx
+        locator: section 5 "Claims"
+    note: 2026 guide s5. The question already says "after a member dies", so "dies" also satisfies the condition.
+
+  Q103:
+    question: Does the 6-month waiting period on extended family funeral cover apply if the death is accidental?
+    paraphrase_of: Q9
+    status: answered
+    must_include:
+      - label: no, accidental death is covered immediately
+        any:
+          - "re:accident\\w*[^.;]{0,80}(immediate|no waiting|not subject|does not apply|doesn't apply)"
+          - "re:(immediate\\w*|no waiting period|does not apply|doesn't apply)[^.;]{0,80}accident"
+    conditions:
+      - label: the waiting period is for death from natural causes
+        any: ["natural"]
+    sources:
+      - document: KA_Funeral_Benefit_Rules_2026.docx
+        locator: section 4 "Waiting periods"
+    note: Funeral rules s4.
+
+  Q104:
+    question: Under the 2025 edition of the group life product guide, what was the maximum lump sum cover per member?
+    status: answered
+    allowed_statuses: [superseded, current]
+    must_include:
+      - label: R20 000 000
+        any: ["R20 000 000"]
+    must_not_include:
+      - label: the 2026 value given as the 2025 value
+        any: ["R25 000 000"]
+        unless_clause_has: ["2026", "current", "now", "latest", "new", "replaced", "since"]
+    sources:
+      - document: KA_Group_Life_Product_Guide_2025.docx
+        locator: section 2.2 "Maximum cover"
+    note: Explicit-edition question. 2025 guide s2.2 gave R20 000 000; mentioning that 2026 raised it to R25 000 000 is fine.
+
+  Q105:
+    question: For a scheme with 75 members, what are the group life and the disability income free cover limits?
+    status: answered
+    must_include:
+      - label: group life R2 000 000
+        any: ["R2 000 000"]
+      - label: disability income R40 000
+        any: ["R40 000"]
+    conditions:
+      - label: the disability limit is monthly
+        any: ["per month", "a month", "monthly", "each month", "pm", "/month", "month"]
+    must_not_include:
+      - label: a neighbouring band's limit
+        any: ["R1 000 000", "R3 500 000", "R30 000", "R55 000"]
+    sources:
+      - document: KA_Free_Cover_Limits_2026.xlsx
+        locator: sheet "Free Cover Limits 2026", cells A4:E10
+    note: Two-part question. 75 members is band 2 (50 to 99) - R 2 000 000 group life, R 40 000 per month disability.
+
+  Q106:
+    question: Does Kestrel group life cover pay out if a member dies by suicide?
+    status: not_found
+    must_not_include:
+      - label: a coverage conclusion about suicide presented as fact
+        any:
+          - "re:suicide (is|isn't|is not) (covered|excluded|paid)"
+          - "re:(covers|excludes|pays out for|will pay|would pay|is payable)[^.;]{0,30}suicide"
+          - "re:not (listed|among|one of) (the |as an? )?exclusion"
+        unless_clause_has: ["whether", "do not say", "does not say", "don't say", "doesn't say", "do not mention", "does not mention", "don't mention", "doesn't mention", "not mentioned", "no mention", "not state", "not stated", "not address", "cannot confirm", "can't confirm"]
+    note: The exclusions in s7 (war, civil commotion or riot, nuclear, biological or chemical events) do not mention suicide either way. Reasoning that it is "not excluded, so covered" goes beyond the documents.
+
+  Q107:
+    question: A member on disability Option C earned R80 000 a month. What monthly benefit would they get?
+    paraphrase_of: Q6
+    status: answered
+    calculated: true
+    must_include:
+      - label: R65 000
+        any: ["R65 000"]
+    conditions:
+      - label: a monthly amount
+        any: ["per month", "a month", "monthly", "each month", "pm", "/month", "month"]
+    must_not_include:
+      - label: 75% of the whole salary
+        any: ["R60 000"]
+        unless_clause_has: ["option a", "option b", "a or b", "a and b"]
+    sources:
+      - document: KA_Group_Disability_Income_Guide_2026.pdf
+        locator: section 2 "Benefit options", table 1
+    note: 20 000 + 0.75 x 60 000 = R65 000 a month, below the R300 000 maximum.
+
+  Q108:
+    question: What paperwork has to be sent in for a death claim?
+    paraphrase_of: Q11
+    status: answered
+    must_include:
+      - label: completed death claim form
+        any: ["claim form"]
+      - label: certified copy of the death certificate
+        any: ["death certificate"]
+      - label: certified copy of the deceased member's ID
+        any: ["re:\\bid\\b", "identity document", "identification"]
+      - label: beneficiaries' ID and bank confirmation letter
+        any: ["bank confirmation", "bank letter", "proof of bank"]
+    conditions:
+      - label: copies must be certified
+        any: ["certified"]
+      - label: the beneficiaries' documents
+        any: ["beneficiar"]
+    must_not_include:
+      - label: disability-claim documents listed for a death claim
+        any: ["payslip", "medical report"]
+        unless_clause_has: ["disability"]
+      - label: no documents required
+        any: ["no documents"]
+    sources:
+      - document: KA_Claims_FAQ.docx
+        locator: section "What documents are needed for a death claim?"
+    note: Claims FAQ death claim list.
+
+  Q109:
+    question: When does a disability income benefit stop being paid?
+    paraphrase_of: Q7
+    status: answered
+    must_include:
+      - label: at age 65 at the latest
+        any: ["65"]
+      - label: on recovery
+        any: ["recover"]
+      - label: on death
+        any: ["death", "dies", "die", "passes away"]
+    conditions:
+      - label: whichever happens first
+        any: ["earliest", "whichever", "first", "earlier", "sooner"]
+    sources:
+      - document: KA_Group_Disability_Income_Guide_2026.pdf
+        locator: section 3 "Payment term"
+    note: Disability guide s3. Earliest of recovery, death or age 65.
+
+  Q110:
+    question: How long does someone who leaves their employer have to apply to keep their life cover, and do they need medical evidence?
+    paraphrase_of: Q2
+    status: answered
+    must_include:
+      - label: 60 days
+        any: ["60 days"]
+      - label: no medical evidence needed
+        any: ["without medical evidence", "without providing medical evidence", "no medical evidence", "not need medical evidence", "not required to provide medical evidence", "don't need medical evidence", "doesn't need medical evidence", "does not need medical evidence", "do not need medical evidence", "no need for medical evidence", "without having to provide medical evidence"]
+    conditions:
+      - label: counted from leaving service
+        any: ["of leaving", "after leaving", "from leaving", "leaving service", "leave service", "leaves service", "leaving the employer", "leaving employment", "they leave", "you leave"]
+    must_not_include:
+      - label: the 2025 edition's 30 days presented as current
+        any: ["30 days"]
+        unless_clause_has: *superseded
+    sources:
+      - document: KA_Group_Life_Product_Guide_2026.docx
+        locator: section 4 "Continuation option"
+    note: 2026 guide s4. Application within 60 days of leaving service, no medical evidence; cover is limited to the lower of group cover and R5 000 000 (not asked).
