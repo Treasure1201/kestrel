@@ -86,7 +86,7 @@ def test_ollama_url_with_credentials_is_rejected(settings: Settings) -> None:
 
 
 def test_ollama_cloud_uses_ollama_com_with_a_bearer_header(settings: Settings) -> None:
-    resolved = resolve_model("ollama-cloud:gpt-oss:120b", with_keys(settings, ollama_api_key=FAKE))
+    resolved = resolve_model("ollama-cloud:gpt-oss:20b", with_keys(settings, ollama_api_key=FAKE))
     chat = resolved.chat_model
     assert isinstance(chat, ChatOllama)
     assert chat.base_url == "https://ollama.com"
