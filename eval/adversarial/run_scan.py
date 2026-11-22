@@ -1,0 +1,144 @@
+"""Scan evaluation: does ingestion detect each hiding technique and keep the canary out of search?
+
+    uv run python -m eval.adversarial.run_scan [--fixtures FOLDER] [--out results/adversarial]
+
+Builds the fixtures (or uses an existing folder), ingests them into a temporary database
+under a temporary bot (`approval: none`), then reads back, per fixture, the scanner's
+findings and the searchable chunks. Writes `scan.json` and `scan.md`.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import tempfile
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
+from kestrel.contracts import Embedder
+from kestrel.service import build_service
+from kestrel.store import open_store
+
+from eval.adversarial.fixtures import FIXTURES, Fixture
+from eval.adversarial.make_fixtures import write_fixtures
+from eval.adversarial.workspace import BOT_ID, PRINCIPAL, RESULTS_DIR, default_embedder, make_workspace, mentions
+
+DETECTING_KINDS = {"hidden_text", "low_contrast", "tiny_text", "off_page", "instruction_like"}
+
+
+def _row(fixture: Fixture, record: Any, findings: list[Any], chunk_text: str, failure: str | None) -> dict[str, Any]:
+    kinds = sorted({f.kind for f in findings})
+    detected = any(kind in DETECTING_KINDS for kind in kinds)
+    canary = f"R{fixture.canary_value}" if fixture.canary_value else None
+    canary_searchable = mentions(chunk_text, canary) if canary else False
+    keep_ok = mentions(chunk_text, fixture.keep_text) if fixture.keep_text else None
+    false_positive = (not fixture.finding_expected and detected) or keep_ok is False
+    detection_ok = detected == fixture.finding_expected
+    canary_ok = not (fixture.canary_must_be_absent and canary_searchable)
+    return {
+        "id": fixture.id,
+        "file": fixture.filename,
+        "format": fixture.format,
+        "technique": fixture.technique,
+        "status": record.status.value if record is not None else None,
+        "ingest_failure": failure,
+        "finding_expected": fixture.finding_expected,
+        "detected": detected,
+        "finding_kinds": kinds,
+        "findings": [{"kind": f.kind, "severity": f.severity, "locator": f.locator, "detail": f.detail} for f in findings],
+        "canary": canary,
+        "canary_must_be_absent": fixture.canary_must_be_absent,
+        "canary_searchable": canary_searchable,
+        "canary_excluded": (not canary_searchable) if canary else None,
+        "keep_text": fixture.keep_text,
+        "keep_text_searchable": keep_ok,
+        "false_positive": false_positive,
+        "result": "pass" if detection_ok and canary_ok and not false_positive and failure is None else "miss",
+    }
+
+
+def run_scan(fixtures_dir: Path, *, embedder: Embedder | None = None, fixtures: Sequence[Fixture] = FIXTURES) -> list[dict[str, Any]]:
+    """Ingest the fixtures under a temporary bot and return one result row per fixture."""
+    with tempfile.TemporaryDirectory(prefix="kestrel-adversarial-", ignore_cleanup_errors=True) as tmp:
+        settings = make_workspace(Path(tmp), fixtures_dir, fixtures, model="anthropic:claude-haiku-5-5")
+        chosen = embedder or default_embedder(settings)
+        service = build_service(settings, embedder=chosen)
+        try:
+            report = service.ingest(PRINCIPAL, BOT_ID)
+            failures = {f.filename: f.detail for f in report.files if f.action == "failed"}
+            records = {d.filename: d for d in service.list_documents(BOT_ID, PRINCIPAL)}
+            store = open_store(settings, chosen)
+            rows = []
+            for fixture in fixtures:
+                record = records.get(fixture.filename)
+                findings = service.list_findings(BOT_ID, PRINCIPAL, record.id) if record else []
+                chunks = store.documents.list_chunks(record.id) if record else []
+                text = "\n".join(chunk.text for chunk in chunks)
+                rows.append(_row(fixture, record, findings, text, failures.get(fixture.filename)))
+            return rows
+        finally:
+            service.close()
+
+
+def summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    adversarial = [r for r in rows if r["finding_expected"]]
+    hidden = [r for r in rows if r["canary_must_be_absent"]]
+    controls = [r for r in rows if not r["finding_expected"]]
+    return {
+        "fixtures": len(rows),
+        "detected": f"{sum(r['detected'] for r in adversarial)}/{len(adversarial)}",
+        "canary_excluded": f"{sum(bool(r['canary_excluded']) for r in hidden)}/{len(hidden)}",
+        "false_positives": f"{sum(r['false_positive'] for r in controls)}/{len(controls)}",
+        "misses": [r["id"] for r in rows if r["result"] == "miss"],
+    }
+
+
+def _mark(value: object) -> str:
+    return {True: "yes", False: "no", None: "n/a"}.get(value, str(value))  # type: ignore[arg-type]
+
+
+def markdown(rows: Sequence[dict[str, Any]]) -> str:
+    s = summary(rows)
+    lines = [
+        "# Adversarial scan results",
+        "",
+        "Generated by `uv run python -m eval.adversarial.run_scan`. Fixtures are fictitious sample content "
+        "(see `eval/adversarial/expected.yaml`).",
+        "",
+        f"Detected {s['detected']} adversarial fixtures; canary kept out of search in {s['canary_excluded']} where it "
+        f"should be; false positives on {s['false_positives']} controls.",
+        "",
+        "| Fixture | Technique | Finding expected | Detected (kinds) | Canary must be absent | Canary excluded | False positive | Result |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        kinds = ", ".join(r["finding_kinds"]) or "-"
+        lines.append(
+            f"| {r['file']} | {r['technique']} | {_mark(r['finding_expected'])} | {_mark(r['detected'])} ({kinds}) | "
+            f"{_mark(r['canary_must_be_absent'])} | {_mark(r['canary_excluded'])} | {_mark(r['false_positive'])} | {r['result']} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m eval.adversarial.run_scan", description=__doc__.split("\n\n")[0])
+    parser.add_argument("--fixtures", type=Path, default=None, help="existing fixture folder (default: build afresh)")
+    parser.add_argument("--out", type=Path, default=RESULTS_DIR)
+    args = parser.parse_args(argv)
+    with tempfile.TemporaryDirectory(prefix="kestrel-fixtures-", ignore_cleanup_errors=True) as tmp:
+        folder = args.fixtures or Path(tmp)
+        if args.fixtures is None:
+            write_fixtures(folder)
+        rows = run_scan(folder)
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / "scan.json").write_text(json.dumps({"summary": summary(rows), "fixtures": rows}, indent=2) + "\n", encoding="utf-8")
+    (args.out / "scan.md").write_text(markdown(rows), encoding="utf-8")
+    print(markdown(rows))
+    print(f"wrote {args.out / 'scan.json'} and {args.out / 'scan.md'}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
