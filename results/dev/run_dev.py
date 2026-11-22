@@ -52,7 +52,7 @@ def main() -> int:
         items = [(pid, text) for pid, text in PROBES.items() if not only or pid in only]
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w", encoding="utf-8") as handle:
+    with out.open("w", encoding="utf-8", newline="\n") as handle:
         for qid, text in items:
             started = time.perf_counter()
             result = service.ask(BOT, text, principal, model=args.model)
