@@ -345,6 +345,8 @@ questions:
         any: ["no documents"]
       - label: a guarantee
         any: ["guarantee"]
+        # Saying it is NOT a guarantee is the correct reading of "aims to".
+        unless_clause_has: ['re:\b(not|no|rather than|without)\b[^.;]{0,25}guarante']
       - label: every claim approved
         any: ["re:every (kestrel )?claim is approved", "re:all claims are approved"]
     sources:
