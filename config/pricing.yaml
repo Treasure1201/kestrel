@@ -1,0 +1,18 @@
+# List prices in USD per million tokens, used to report a measured cost per question.
+# These are published list prices as of the date below, to be checked against each
+# provider's pricing page before relying on them. Discounts (prompt caching, batch,
+# negotiated rates) are not modelled.
+#
+# A model without an entry is reported with an unknown cost, never a guessed one.
+# Local Ollama has no API charge and is always reported as unknown cost.
+# Ollama Cloud is billed by subscription, so it has no per-token entry.
+
+as_of: 2026-11-03
+currency: USD
+
+prices:
+  anthropic:
+    claude-sonnet-5-5: {input: 2.00, output: 10.00}
+    claude-haiku-5-5: {input: 0.10, output: 0.50}   # prompts up to 100K tokens; 0.50 / 2.50 beyond
+    claude-opus-5-5: {input: 4.00, output: 20.00}
+  openai: {}   # gpt-6.1-sol: no confirmed list price yet; add it here once checked

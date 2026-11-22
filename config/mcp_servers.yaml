@@ -1,0 +1,21 @@
+# Centrally approved MCP servers. Bots opt in by name (`mcp_servers:` in bot.yaml).
+#
+# An allow-list limits which tools can be called; it cannot make a tool harmless.
+# A person reviews each server and records that every allowed tool only reads.
+# Tool output is treated as untrusted data; tool arguments pass the privacy gate.
+#
+# Example (not active):
+#
+# servers:
+#   - name: example-lookup
+#     transport: stdio                 # or: http (then give `url` instead of `command`)
+#     command: python                  # `python` means the interpreter running kestrel
+#     args: ["examples/mcp_servers/example_lookup.py"]
+#     allowed_tools: [lookup]
+#     locality: on-device              # or: external (confidential bots refuse external servers)
+#     read_only:
+#       reviewed_by: "A. Reviewer"
+#       reviewed_on: "2026-11-22"
+#       statement: "lookup reads a local file and has no side effects."
+
+servers: []

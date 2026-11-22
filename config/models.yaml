@@ -1,0 +1,27 @@
+# Model defaults and the models this repository was tested with.
+# Read by src/kestrel/llm/catalog.py. Unknown keys are rejected.
+
+defaults:
+  request_timeout_s: 120     # per model request; the per-question limit is KESTREL_TIMEOUT_S
+  max_retries: 2             # transient provider errors only
+  max_output_tokens: 8192    # hosted providers
+
+ollama:
+  # num_ctx is always sent: Ollama otherwise truncates long prompts silently to its small default.
+  num_ctx: 32768
+  num_predict: 8192
+  keep_alive: 30m
+
+# Model-name prefixes that reject temperature=0; for these the provider default is used.
+# "*" means every model of the provider.
+fixed_temperature:
+  anthropic: ["*"]                            # current Claude models accept only the default
+  openai: ["gpt-5", "gpt-6", "o1", "o3", "o4"]  # reasoning models accept only the default
+
+# Models the answers were evaluated with. `kestrel doctor` warns for any other model.
+# Updated after each evaluation run.
+tested:
+  ollama: ["gpt-oss:20b"]
+  ollama-cloud: ["gpt-oss:120b"]
+  anthropic: ["claude-sonnet-5-5", "claude-haiku-5-5"]
+  openai: ["gpt-6.1-sol"]

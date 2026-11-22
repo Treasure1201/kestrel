@@ -1,0 +1,33 @@
+id: kestrel-products
+name: Kestrel Product Assistant
+description: Answers questions about group life, disability and funeral cover from approved guides.
+audience: [call-centre-agent, broker]          # roles allowed to use this bot
+
+knowledge:
+  collections: [kestrel-products]              # the only documents this bot can search
+  approval: required                           # a document must be listed in manifest.yaml
+  default_scope: current                       # superseded editions only on explicit request
+
+prompt: prompt.md                              # persona and domain guidance
+tools: [search_documents, get_table, calculate]
+mcp_servers: []                                # names from config/mcp_servers.yaml
+skills: []                                     # skill folders (each with <skill>/SKILL.md), added later
+
+model:
+  default: ${KESTREL_MODEL}                    # always set: settings supply a default
+  allowed_providers: [ollama, ollama-cloud, anthropic, openai]
+  max_model_calls: 12
+  max_searches: 6
+
+privacy:
+  classification: internal                     # confidential => on-device destinations only
+  on_personal_information: redact              # or: block
+  audit_question_text: redacted                # or: none (store only a digest)
+  retention_days: 30
+
+verification:
+  on_failure: withhold                         # or: warn
+  max_repairs: 1
+
+evaluation:
+  gold: eval/gold.yaml
