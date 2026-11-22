@@ -18,7 +18,7 @@ from kestrel.interfaces.cli_admin import audit_app, docs_app
 from kestrel.interfaces.cli_render import ask_json, exit_code, render_ask, render_search
 
 app = typer.Typer(
-    help="Kestrel assistant: governed, cited answers from approved documents.",
+    help="Assistant: governed, cited answers from approved documents.",
     no_args_is_help=True,
     pretty_exceptions_enable=False,
     add_completion=False,
@@ -37,7 +37,7 @@ EXIT_WORDS = {"exit", "quit"}
 def main(
     debug: Annotated[bool, typer.Option("--debug", help="Show a traceback when a command fails.")] = False,
 ) -> None:
-    """Kestrel assistant command line."""
+    """Assistant command line."""
     rt.STATE.debug = debug
 
 
