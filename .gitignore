@@ -9,3 +9,4 @@ results/tmp/
 *.egg-info
 .DS_Store
 ~$*
+results/flags/
