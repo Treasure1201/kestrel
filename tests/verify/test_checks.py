@@ -179,6 +179,11 @@ def test_correct_traced_calculation_passes() -> None:
     assert checks(ans, question="Salary R40 000. What is the benefit?") == []
 
 
+def test_result_copied_with_its_expression_is_accepted() -> None:
+    ans = answer("R30 000.", [("c4", "75% of monthly salary")], calculations=[("0.75 * 40000", "0.75 * 40000 = 30000", "c4")])
+    assert checks(ans, question="Salary R40 000?") == []
+
+
 def test_wrong_result_fails() -> None:
     ans = answer("R31 000.", [("c4", "75% of monthly salary")], calculations=[("0.75 * 40000", "31000", "c4")])
     issues = checks(ans, question="Salary R40 000?")

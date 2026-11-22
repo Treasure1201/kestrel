@@ -11,7 +11,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
 from kestrel.agent.context import Budget
-from kestrel.agent.middleware import BudgetMiddleware, retry_middleware
+from kestrel.agent.middleware import BudgetMiddleware, ToolChoiceFallback, retry_middleware
 from kestrel.agent.prompt import system_prompt
 from kestrel.agent.readonly import ToolAllowList, skills_backend
 from kestrel.contracts import BUILTIN_TOOLS, AgentAnswer, BotConfig
@@ -54,6 +54,7 @@ def build_agent(
             FilesystemMiddleware(backend=backend, tools=[READ_FILE], tool_token_limit_before_evict=None),
             ToolAllowList(allowed),
             BudgetMiddleware(budget),
+            ToolChoiceFallback(),
             retry_middleware(max_retries),
         ],
         response_format=ToolStrategy(AgentAnswer),

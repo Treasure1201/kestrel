@@ -35,6 +35,71 @@ def retry_middleware(max_retries: int = 2) -> ModelRetryMiddleware:
     )
 
 
+_RELAXED_MODELS: set[str] = set()
+"""Models (by class and name) that rejected a forced tool choice in this process."""
+
+
+def _model_key(model: Any) -> str:
+    name = getattr(model, "model", None) or getattr(model, "model_name", None) or ""
+    return f"{type(model).__name__}:{name}"
+
+
+def rejects_forced_tool_choice(exc: BaseException) -> bool:
+    """True for a provider's refusal of `tool_choice` any/required (a 400 that names tool_choice)."""
+    status = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+    return status == 400 and "tool_choice" in str(exc)
+
+
+class _AutoToolChoice:
+    """Wraps a chat model so a forced tool choice is bound as `auto`; everything else is delegated."""
+
+    def __init__(self, model: Any) -> None:
+        self._model = model
+
+    def bind_tools(self, tools: Any, *, tool_choice: Any = None, **kwargs: Any) -> Any:
+        relaxed = None if tool_choice in ("any", "required", True) else tool_choice
+        return self._model.bind_tools(tools, tool_choice=relaxed, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._model, name)
+
+
+class ToolChoiceFallback(AgentMiddleware[Any, Any, Any]):
+    """Structured output forces a tool call (`tool_choice="any"`); some models refuse that.
+
+    When a provider rejects it, the call is retried once with `auto`, and the model is
+    remembered for the rest of the process. The answer is then still returned through
+    the answer tool, or the runner's nudge asks for it.
+    """
+
+    def _maybe_relaxed(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
+        if _model_key(request.model) in _RELAXED_MODELS:
+            return request.override(model=_AutoToolChoice(request.model))  # type: ignore[arg-type]
+        return request
+
+    def wrap_model_call(
+        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], ModelResponse[Any]]
+    ) -> ModelResponse[Any]:
+        try:
+            return handler(self._maybe_relaxed(request))
+        except Exception as exc:
+            if _model_key(request.model) in _RELAXED_MODELS or not rejects_forced_tool_choice(exc):
+                raise
+            _RELAXED_MODELS.add(_model_key(request.model))
+            return handler(self._maybe_relaxed(request))
+
+    async def awrap_model_call(
+        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]]
+    ) -> ModelResponse[Any]:
+        try:
+            return await handler(self._maybe_relaxed(request))
+        except Exception as exc:
+            if _model_key(request.model) in _RELAXED_MODELS or not rejects_forced_tool_choice(exc):
+                raise
+            _RELAXED_MODELS.add(_model_key(request.model))
+            return await handler(self._maybe_relaxed(request))
+
+
 class BudgetMiddleware(AgentMiddleware[Any, Any, Any]):
     """Counts every model call against the question's budget.
 

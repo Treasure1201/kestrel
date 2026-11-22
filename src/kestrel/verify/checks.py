@@ -171,7 +171,8 @@ def check_calculations(ctx: _Context) -> list[CheckIssue]:
         except CalculationError as exc:
             issues.append(CheckIssue(check="calculation_recomputed", detail=f"The calculation {expression!r} cannot be evaluated: {exc}"))
             continue
-        claimed = parse_number(reported.result)
+        # The tool prints `expression = result`; a result copied with its expression is read after the last `=`.
+        claimed = parse_number(reported.result.rsplit("=", 1)[-1])
         if claimed is None or not (
             contains_number({computed.value, computed.exact}, claimed)
         ):

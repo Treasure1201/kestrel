@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from pydantic import ValidationError
 
 from kestrel.agent.context import Budget
 from kestrel.agent.prompt import NUDGE
@@ -44,11 +46,40 @@ async def _invoke(agent: Any, messages: Sequence[BaseMessage], budget: Budget) -
     return state
 
 
+def answer_from_text(text: str) -> AgentAnswer | None:
+    """An answer some models write as JSON text instead of calling the answer tool.
+
+    It is accepted only if it validates against the answer schema, and it then goes
+    through the same evidence checks as any other answer, so nothing is trusted more.
+    """
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        data = json.loads(text[start : end + 1])
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or "status" not in data:
+        return None
+    for citation in data.get("citations") or []:
+        if isinstance(citation, dict):
+            citation.setdefault("supports", "")
+    try:
+        return AgentAnswer.model_validate(data)
+    except ValidationError:
+        return None
+
+
 def _answer(state: dict[str, Any]) -> AgentAnswer | None:
     value = state.get("structured_response")
-    if value is None or isinstance(value, AgentAnswer):
+    if isinstance(value, AgentAnswer):
         return value
-    return AgentAnswer.model_validate(value)
+    if value is not None:
+        return AgentAnswer.model_validate(value)
+    last = next((m for m in reversed(state.get("messages", [])) if isinstance(m, AIMessage)), None)
+    if last is None or last.tool_calls or not isinstance(last.content, str):
+        return None
+    return answer_from_text(last.content)
 
 
 async def run_turn(agent: Any, messages: Sequence[BaseMessage], budget: Budget) -> TurnResult:

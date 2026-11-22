@@ -95,6 +95,32 @@ def test_read_file_is_offered_only_with_skills(tmp_path: Path) -> None:
     assert "SECRET" not in outputs["escape"]
 
 
+def test_forced_tool_choice_falls_back_to_auto(tmp_path: Path) -> None:
+    import httpx
+
+    class Picky(ScriptedChatModel):
+        choices: list = []  # type: ignore[type-arg]
+
+        def bind_tools(self, tools, *, tool_choice=None, **kwargs):  # type: ignore[no-untyped-def]
+            self.choices.append(tool_choice)
+            return super().bind_tools(tools, tool_choice=tool_choice, **kwargs)
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):  # type: ignore[no-untyped-def]
+            if self.choices[-1] == "any":
+                request = httpx.Request("POST", "https://x")
+                raise httpx.HTTPStatusError("tool_choice: any is not supported", request=request, response=httpx.Response(400, request=request))
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    ctx = _ctx()
+    model = Picky(script=[final_answer(ANSWER)], model="picky-test-model")  # type: ignore[call-arg]
+    bot = _bot(tmp_path)
+    agent = build_agent(bot, model, build_builtin_tools(bot.tools, ctx, _NoRetriever()), ctx.budget)
+    result = agent.invoke({"messages": [{"role": "user", "content": "question"}]})
+    assert result["structured_response"] == ANSWER
+    assert model.choices[:2] == ["any", None]
+    assert ctx.budget.model_calls == 1
+
+
 def test_transient_errors_only_are_retried() -> None:
     import httpx
 
