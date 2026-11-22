@@ -25,7 +25,7 @@ SEVERITY = {"high": ("high severity", "red"), "warning": ("warning", "orange"), 
 
 
 def _forget_documents() -> None:
-    for prefix in ("docs:", "findings:", "cited:", "bots", "audit"):
+    for prefix in ("docs:", "findings:", "cited:", "compare:", "bots", "audit"):
         runtime.forget(prefix)
 
 
@@ -158,7 +158,36 @@ def _details(svc: AssistantService, who: Principal, doc: DocumentRecord, finding
         _actions(svc, who, doc)
 
 
-def _history(documents: list[DocumentRecord], doc: DocumentRecord) -> None:
+def _changed_values(svc: AssistantService, who: Principal, bot_id: str, doc: DocumentRecord) -> None:
+    """The 'Values that changed' table: numbers that differ between this edition and the one beside it."""
+    comparison = runtime.attempt(
+        runtime.memo, f"compare:{bot_id}:{doc.id}", lambda: svc.compare_editions(bot_id, doc.id, who)
+    )
+    if comparison is None:
+        return
+    section_label("Values that changed")
+    if comparison.older is None or comparison.newer is None:
+        st.caption(comparison.note or "There is no other edition to compare with.")
+        return
+    old, new = comparison.older.edition or "older", comparison.newer.edition or "newer"
+    st.caption(f"{comparison.older.filename} compared with {comparison.newer.filename}, section by section.")
+    if comparison.values:
+        st.dataframe(
+            [
+                {"Section": change.heading.split(" > ")[-1], old: value.before or "(none)", new: value.after or "(none)",
+                 "Context": value.context}
+                for change, value in comparison.values
+            ],
+            hide_index=True,
+        )
+    else:
+        st.caption(comparison.note or "No numbers differ between the two editions.")
+    other = [c for c in comparison.changes if not c.values]
+    if other:
+        st.caption("Also changed, wording only or added or removed: " + "; ".join(f"{c.heading.split(' > ')[-1]} ({c.change})" for c in other))
+
+
+def _history(svc: AssistantService, who: Principal, bot_id: str, documents: list[DocumentRecord], doc: DocumentRecord) -> None:
     editions = metrics.edition_history(documents, doc)
     with st.container(border=True):
         st.subheader(f"Edition history: {doc.family}" if doc.family else "Edition history")
@@ -179,6 +208,7 @@ def _history(documents: list[DocumentRecord], doc: DocumentRecord) -> None:
         current = next((e for e in editions if e.status == DocumentStatus.CURRENT), None)
         if current is not None:
             st.caption(f"Answers use the {current.edition} edition unless a question names another.")
+        _changed_values(svc, who, bot_id, doc)
 
 
 ctx = runtime.context()
@@ -225,6 +255,7 @@ event = st.dataframe(
             "Status": d.status.value,
             "Effective from": d.effective_from.isoformat() if d.effective_from else "",
             "Sections": d.section_count,
+            "Chunks": d.chunk_count,
             "Findings": by_doc.get(d.id, d.finding_count),
             "Times cited": None if cited[d.id] is None else len(cited[d.id] or []),
         }
@@ -244,4 +275,4 @@ with main_col:
     section_label("Document details")
     _details(svc, who, chosen, [f for f in all_findings if f.document_id == chosen.id], cited[chosen.id])
 with side_col:
-    _history(documents, chosen)
+    _history(svc, who, bot.id, documents, chosen)

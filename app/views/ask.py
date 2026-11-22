@@ -64,13 +64,20 @@ def _empty_state(bot: BotSummary) -> None:
         "every claim, or a plain statement that the documents do not say.",
         icon=":material/chat:",
     )
-    examples = tuple(getattr(bot, "examples", ()) or ())
-    if examples:
-        with st.container(horizontal=True):
-            for n, example in enumerate(examples[:4]):
-                if st.button(str(example), key=f"ex-{bot.id}-{n}"):
-                    st.session_state["pending_question"] = str(example)
-                    st.rerun()
+
+
+def _ask_example(question: str) -> None:
+    st.session_state["pending_question"] = question
+
+
+def _examples(bot: BotSummary) -> None:
+    """The bot's example questions as buttons just above the chat input; a click asks the question."""
+    if not bot.examples:
+        return
+    st.caption("Try an example question:")
+    with st.container(horizontal=True):
+        for n, example in enumerate(bot.examples):
+            st.button(example, key=f"ex-{bot.id}-{n}", on_click=_ask_example, args=(example,), type="secondary")
 
 
 ctx = runtime.context()
@@ -110,6 +117,7 @@ with left:
             on_select=lambda i=index: _select(bot.id, i),
             on_flag=lambda r=result: _flag(r, who.user),
         )
+    _examples(bot)
     st.caption(PRIVACY_NOTE)
 
 with right:

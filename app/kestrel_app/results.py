@@ -1,13 +1,15 @@
 """Evaluation run folders under `results/`, read from the files a run writes.
 
 A run folder holds `results.jsonl` (one `EvalRecord` per line), `results.csv`,
-`summary.json` and, once a person has reviewed it, `review.yaml`. Only the JSONL file
-and the review are read here: every number on the page is computed from the records.
+`summary.json`, `retrieval.json` (the search-only pass) and, once a person has reviewed
+it, `review.yaml`. The JSONL file, the retrieval file and the review are read here:
+every number on the page is computed from them.
 No Streamlit.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from kestrel.contracts import EvalRecord
 
 RESULTS_JSONL = "results.jsonl"
 REVIEW_YAML = "review.yaml"
+RETRIEVAL_JSON = "retrieval.json"
 MAX_FILE_BYTES = 50 * 1024 * 1024
 
 
@@ -29,6 +32,42 @@ class HumanReview:
 
 
 @dataclass(frozen=True)
+class Retrieval:
+    """Hit@k and MRR of a search-only pass: where the expected section ranked, with no model."""
+
+    targets: int
+    """Questions with an expected section that were searched."""
+    without_target: int
+    hits: dict[int, int]
+    """Cut-off (1, 3, 6) to the number of questions whose section ranked at or above it."""
+    mrr: float | None = None
+    search_limit: int = 10
+
+    def share(self, cutoff: int) -> float | None:
+        """hit@cutoff as a fraction, or None without targets."""
+        return self.hits.get(cutoff, 0) / self.targets if self.targets else None
+
+
+def read_retrieval(path: Path) -> Retrieval | None:
+    """`retrieval.json`, or None when it is absent, unreadable or not in the expected shape."""
+    if not path.is_file() or path.stat().st_size > MAX_FILE_BYTES:
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        hits = {int(k): int(v) for k, v in (data.get("hits") or {}).items()}
+        mrr = data.get("mrr")
+        return Retrieval(
+            targets=int(data.get("questions_with_target") or 0),
+            without_target=int(data.get("questions_without_target") or 0),
+            hits=hits,
+            mrr=float(mrr) if mrr is not None else None,
+            search_limit=int(data.get("search_limit") or 10),
+        )
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+@dataclass(frozen=True)
 class RunFolder:
     """One evaluation run folder and what could be read from it."""
 
@@ -38,6 +77,8 @@ class RunFolder:
     reviews: dict[tuple[int, str], HumanReview] = field(default_factory=dict)
     problem: str | None = None
     """Why the folder could not be read in full, if it could not."""
+    retrieval: Retrieval | None = None
+    """The search-only pass of the run, from `retrieval.json`, when the folder has one."""
 
     @property
     def model(self) -> str:
@@ -105,8 +146,19 @@ def discover_runs(root: Path) -> list[RunFolder]:
             records, note = read_records(jsonl)
         except OSError as exc:
             records, note = [], f"{jsonl.name} could not be opened ({type(exc).__name__})"
-        folders.append(RunFolder(path.name, path, records, read_review(path / REVIEW_YAML), note))
+        folders.append(RunFolder(path.name, path, records, read_review(path / REVIEW_YAML), note, read_retrieval(path / RETRIEVAL_JSON)))
     return folders
+
+
+def latest_retrieval(root: Path) -> tuple[str, Retrieval] | None:
+    """The newest folder under `root` holding a readable `retrieval.json` (with or without answers)."""
+    if not root.is_dir():
+        return None
+    for path in sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: p.name, reverse=True):
+        found = read_retrieval(path / RETRIEVAL_JSON)
+        if found is not None and found.targets:
+            return path.name, found
+    return None
 
 
 def latest_per_model(folders: list[RunFolder]) -> list[RunFolder]:

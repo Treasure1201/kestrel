@@ -42,10 +42,50 @@ def docs_list(bot: BotOption = None) -> None:
     service = rt.get_service(settings)
     records = service.list_documents(_bot(settings, bot), rt.principal(settings))
     rows = [
-        (d.id, d.collection, d.filename, d.edition or "", d.status.value, d.section_count, d.finding_count, d.status_reason or "")
+        (d.id, d.collection, d.filename, d.edition or "", d.status.value, d.section_count, d.chunk_count, d.table_count,
+         d.finding_count, d.status_reason or "")
         for d in records
     ]
-    rt.print_table(["ID", "Collection", "File", "Edition", "Status", "Sections", "Findings", "Reason"], rows, max_width=40)
+    head = ["ID", "Collection", "File", "Edition", "Status", "Sections", "Chunks", "Tables", "Findings", "Reason"]
+    rt.print_table(head, rows, max_width=40)
+
+
+@docs_app.command("compare")
+@rt.handle_errors
+def docs_compare(document_id: DocumentId, bot: BotOption = None) -> None:
+    """What changed between a document and the other edition of its family (no model is used)."""
+    settings = rt.get_settings()
+    service = rt.get_service(settings)
+    result = service.compare_editions(_bot(settings, bot), document_id, rt.principal(settings))
+    rt.out(f"Editions of {result.family or 'this document'}:")
+    rt.print_table(
+        ["ID", "File", "Edition", "Status", "Effective from"],
+        [(d.id, d.filename, d.edition or "", d.status.value, d.effective_from.isoformat() if d.effective_from else "")
+         for d in result.editions],
+        max_width=50,
+    )
+    rt.out()
+    if result.older is None or result.newer is None:
+        rt.out(result.note or "Nothing to compare.")
+        return
+    rt.out(f"Comparing {result.older.filename} (edition {result.older.edition}) with {result.newer.filename} (edition {result.newer.edition}).")
+    if result.values:
+        rt.out()
+        rt.out("Values that changed:")
+        rows = [(change.heading.split(" > ")[-1], value.before or "-", value.after or "-", value.context) for change, value in result.values]
+        rt.print_table(["Section", result.older.edition or "older", result.newer.edition or "newer", "Context"], rows, max_width=50)
+    for change in result.changes:
+        rt.out()
+        rt.out(f"[{change.change}] {change.heading}")
+        if change.older_text:
+            rt.out(f"  {result.older.edition or 'older'}: {snippet(change.older_text, 240)}")
+        if change.newer_text:
+            rt.out(f"  {result.newer.edition or 'newer'}: {snippet(change.newer_text, 240)}")
+    if result.note:
+        rt.out()
+        rt.out(result.note)
+    rt.out()
+    rt.out(f"{len(result.changes)} section(s) differ; {len(result.values)} value(s) changed.")
 
 
 @docs_app.command("findings")
@@ -144,16 +184,19 @@ def _print_audit(records: list[AuditRecord]) -> None:
         if e.error_category is not None:
             what = f"{what} ({e.error_category.value})"
         subject = e.question_text or e.detail or e.document_id or (f"digest {e.question_digest[:12]}" if e.question_digest else "")
+        why = e.reason or ("failed: " + ", ".join(e.failed_checks) if e.failed_checks else "")
         rows.append(
-            (r.id, r.created_at.strftime("%Y-%m-%d %H:%M:%S"), e.kind, e.bot_id or "", e.channel, e.user, what, e.trace_id, subject)
+            (r.id, r.created_at.strftime("%Y-%m-%d %H:%M:%S"), e.kind, e.bot_id or "", e.channel, e.user, what, e.trace_id,
+             subject, why, e.closest or "")
         )
-    rt.print_table(["ID", "Time", "Kind", "Bot", "Channel", "User", "Outcome", "Trace", "Question / detail"], rows, max_width=50)
+    head = ["ID", "Time", "Kind", "Bot", "Channel", "User", "Outcome", "Trace", "Question / detail", "Why", "Closest section"]
+    rt.print_table(head, rows, max_width=50)
 
 
 @audit_app.command("tail")
 @rt.handle_errors
 def audit_tail(
-    limit: Annotated[int, typer.Option("--limit", "-n", min=1, max=1000, help="How many records.")] = 20,
+    limit: Annotated[int, typer.Option("--limit", "-n", min=1, max=500, help="How many records (at most 500).")] = 20,
     bot: BotOption = None,
     all_bots: AllBots = False,
 ) -> None:
