@@ -6,12 +6,12 @@ import typer
 
 from kestrel import __version__
 
-app = typer.Typer(help="Kestrel assistant: governed, cited answers from approved documents.", no_args_is_help=True)
+app = typer.Typer(help="Assistant: governed, cited answers from approved documents.", no_args_is_help=True)
 
 
 @app.callback()
 def main() -> None:
-    """Kestrel assistant command line."""
+    """Assistant command line."""
 
 
 @app.command()
