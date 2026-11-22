@@ -42,7 +42,9 @@ _BM25 = "bm25(chunks_fts, 1.0, 0.6)"
 _RECORD_SQL = (
     "SELECT d.*,"
     " (SELECT count(*) FROM sections s WHERE s.document_id = d.id) AS section_count,"
-    " (SELECT count(*) FROM findings f WHERE f.document_id = d.id) AS finding_count"
+    " (SELECT count(*) FROM findings f WHERE f.document_id = d.id) AS finding_count,"
+    " (SELECT count(*) FROM chunks c WHERE c.document_id = d.id) AS chunk_count,"
+    " (SELECT count(*) FROM sections s WHERE s.document_id = d.id AND s.kind = 'table') AS table_count"
     " FROM documents d"
 )
 
@@ -237,6 +239,15 @@ class SqliteDocumentRepository:
         with self._connections.connect() as conn:
             row = _section_row(conn, section_id)
         return table_view_from_row(row) if row else None
+
+    def list_sections(self, document_id: str) -> list[SectionView]:
+        with self._connections.connect() as conn:
+            rows = conn.execute(
+                "SELECT s.*, d.filename, d.title, d.status, d.edition FROM sections s JOIN documents d ON d.id = s.document_id"
+                " WHERE s.document_id = ? ORDER BY s.ordinal",
+                (document_id,),
+            ).fetchall()
+        return [section_view_from_row(row) for row in rows]
 
     def section_document_id(self, section_id: str) -> str | None:
         """The document a section belongs to, or None for an unknown section."""

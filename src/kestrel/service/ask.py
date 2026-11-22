@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from kestrel.agent.context import RequestContext
 from kestrel.agent.middleware import is_transient
 from kestrel.contracts import (
+    AnswerStep,
     AuditCitation,
     AuditEntry,
     AskResult,
@@ -63,6 +64,8 @@ class _Request:
     model: str = ""
     scope: ScopeDecision | None = None
     answered: Answered | None = None
+    question_derived_reason: bool = False
+    """True when the result's reason was written by the model or quotes the question."""
 
     @property
     def latency_ms(self) -> int:
@@ -120,10 +123,12 @@ def _success(runtime: Runtime, req: _Request) -> AskResult:
         trace_id=req.trace_id, bot_id=req.bot.id, question=req.screened.text, evidence_report=report,
         redactions=req.screened.matched, scope=req.scope.scope if req.scope else None, model=req.model,
         usage=_usage(runtime, req), latency_ms=req.latency_ms, retrieved=answered.context.retrieved(),
+        steps=_steps(req),
     )
     if not report.passed and req.bot.verification.on_failure == "withhold":
         return AskResult(outcome=Outcome.WITHHELD, answer=WITHHELD_MESSAGE,
                          reason="The evidence checks did not pass after one repair attempt.", **common)
+    req.question_derived_reason = True
     text = answer.answer.strip() or (answer.reason or "").strip()
     return AskResult(
         outcome=Outcome(answer.status), answer=text, reason=answer.reason, citations=_resolve(answered),
@@ -138,23 +143,81 @@ def _failure(runtime: Runtime, req: _Request, error: KestrelError) -> AskResult:
         outcome=outcome, reason=error.user_message, redactions=req.screened.matched if req.screened else (),
         scope=req.scope.scope if req.scope else None, model=req.model, usage=_usage(runtime, req),
         latency_ms=req.latency_ms, error_category=error.category,
-        retrieved=req.answered.context.retrieved() if req.answered else (),
+        retrieved=req.answered.context.retrieved() if req.answered else (), steps=_steps(req),
     )
 
 
 def _clarification(req: _Request) -> AskResult:
     assert req.bot is not None and req.screened is not None and req.scope is not None
+    req.question_derived_reason = True  # a clarification quotes the dates or editions the question named
     return AskResult(
         trace_id=req.trace_id, bot_id=req.bot.id, question=req.screened.text, outcome=Outcome.NOT_FOUND,
         answer=req.scope.clarification or "", reason=req.scope.clarification, clarification=req.scope.clarification,
-        redactions=req.screened.matched, model=req.model, latency_ms=req.latency_ms,
+        redactions=req.screened.matched, model=req.model, latency_ms=req.latency_ms, steps=_steps(req),
     )
+
+
+def _scope_detail(scope: SearchScope) -> str:
+    if scope.edition:
+        return f"edition {scope.edition}, named in the question"
+    if scope.effective_on:
+        return f"the editions in force on {scope.effective_on.isoformat()}"
+    return ", ".join(sorted(s.value for s in scope.statuses)) + " documents only"
+
+
+def _steps(req: _Request) -> tuple[AnswerStep, ...]:
+    """Privacy gate and scope, then every tool call, check and repair the request made, in order."""
+    steps: list[AnswerStep] = []
+    if req.screened is not None:
+        found = req.screened.matched
+        if found:
+            kinds = ", ".join(sorted(set(found)))
+            steps.append(AnswerStep(kind="privacy", label="Removed personal information", detail=f"{len(found)} item(s): {kinds}"))
+        else:
+            steps.append(AnswerStep(kind="privacy", label="Checked the question for personal information", detail="none found"))
+    if req.scope is not None:
+        if req.scope.scope is not None:
+            steps.append(AnswerStep(kind="scope", label="Chose the documents to search", detail=_scope_detail(req.scope.scope)))
+        else:
+            steps.append(AnswerStep(kind="scope", label="Asked to clarify the edition", detail="nothing was searched"))
+    if req.answered is not None:
+        steps += list(req.answered.context.steps)
+    return tuple(steps)
+
+
+def _audit_reason(runtime: Runtime, req: _Request, result: AskResult, store_text: bool) -> str | None:
+    """Why the question was not answered, as it may be stored.
+
+    A reason written by the model, or a clarification (which quotes the question), is
+    derived from the question: it is stored screened, and only when the question text
+    itself would be stored. A reason written by the application is always stored.
+    """
+    if result.outcome in {Outcome.ANSWERED, Outcome.PARTIAL} or not result.reason:
+        return None
+    if not req.question_derived_reason:
+        return result.reason
+    if not store_text or req.bot is None:
+        return None
+    try:
+        return screen_question(runtime, result.reason, req.bot.privacy).text
+    except KestrelError:
+        return None
+
+
+def _closest(result: AskResult) -> str | None:
+    """`filename > locator` of the top-ranked passage the model was shown."""
+    if not result.retrieved:
+        return None
+    hit = result.retrieved[0].hit
+    return hit.locator if hit.locator.startswith(hit.filename) else f"{hit.filename} > {hit.locator}"
 
 
 def _audit(runtime: Runtime, req: _Request, result: AskResult) -> None:
     policy = req.bot.privacy if req.bot else None
     text = result.question
     store_text = bool(text) and policy is not None and policy.audit_question_text == "redacted"
+    report = result.evidence_report
+    failed = tuple(sorted({i.check for i in report.issues if i.severity == "error"})) if report else ()
     entry = AuditEntry(
         kind="ask", trace_id=req.trace_id, bot_id=result.bot_id, channel=req.principal.channel, user=req.principal.user,
         roles=tuple(sorted(req.principal.roles)), question_text=text if store_text else None,
@@ -166,6 +229,7 @@ def _audit(runtime: Runtime, req: _Request, result: AskResult) -> None:
         outcome=result.outcome, error_category=result.error_category, model=result.model or None,
         input_tokens=result.usage.input_tokens, output_tokens=result.usage.output_tokens,
         cost_usd=result.usage.cost_usd, latency_ms=result.latency_ms,
+        reason=_audit_reason(runtime, req, result, store_text), failed_checks=failed, closest=_closest(result),
     )
     try:
         runtime.store.audit.append(entry)

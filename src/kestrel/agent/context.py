@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 
 from kestrel.agent.calculator import Calculation
-from kestrel.contracts import Evidence, SearchHit, SearchScope, TableRowView
+from kestrel.contracts import AnswerStep, Evidence, SearchHit, SearchScope, StepKind, TableRowView
 from kestrel.errors import BudgetExceededError
 
 
@@ -74,6 +74,8 @@ class RequestContext:
     calculations: list[Calculation] = field(default_factory=list)
     tables_fetched: dict[str, str] = field(default_factory=dict)
     """section id -> the label whose rows were registered for it."""
+    steps: list[AnswerStep] = field(default_factory=list)
+    """Every tool call, check and repair, in the order they happened."""
     _by_chunk: dict[str, str] = field(default_factory=dict)
     _next: int = 1
     _lock: threading.Lock = field(default_factory=threading.Lock)
@@ -110,6 +112,11 @@ class RequestContext:
     def record_calculation(self, calculation: Calculation) -> None:
         with self._lock:
             self.calculations.append(calculation)
+
+    def record_step(self, kind: StepKind, label: str, detail: str = "") -> None:
+        """Log one step of answering (a tool call, the checks, a repair) for display and the result."""
+        with self._lock:
+            self.steps.append(AnswerStep(kind=kind, label=label, detail=detail))
 
     def retrieved(self) -> tuple[Evidence, ...]:
         """Every labelled excerpt and row, in the order they were shown."""

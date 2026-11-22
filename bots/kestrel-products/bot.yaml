@@ -31,3 +31,9 @@ verification:
 
 evaluation:
   gold: eval/gold.yaml
+
+examples:                                      # up to 6 short questions, shown as buttons in the app
+  - What is the maximum group life cover per member?
+  - What is the group life free cover limit for a scheme with 500 members?
+  - What waiting period applies to disability income Option A?
+  - Within what period must a member's death be notified?

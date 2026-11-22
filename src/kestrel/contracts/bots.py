@@ -22,6 +22,11 @@ BOT_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,62}$"
 BUILTIN_TOOLS: tuple[str, ...] = ("search_documents", "get_table", "calculate")
 """The read-only tools the agent package provides. A bot lists the ones it uses."""
 
+MAX_EXAMPLES = 6
+"""Most example questions a bot may list."""
+MAX_EXAMPLE_CHARS = 120
+"""Longest example question, so each fits on a button."""
+
 
 class KnowledgeConfig(Frozen):
     """Which documents a bot may read, and which of them it sees by default."""
@@ -125,8 +130,21 @@ class BotConfig(Frozen):
     privacy: PrivacyPolicy = PrivacyPolicy()
     verification: VerificationPolicy = VerificationPolicy()
     evaluation: EvaluationConfig = EvaluationConfig()
+    examples: tuple[str, ...] = Field(default=(), max_length=MAX_EXAMPLES)
+    """Up to six short example questions, shown as buttons and by `kestrel bots --examples`."""
     root: Path
     """Absolute path of the bot folder, `bots/<id>/`."""
+
+    @field_validator("examples")
+    @classmethod
+    def _short_examples(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        cleaned = tuple(" ".join(item.split()) for item in value)
+        for item in cleaned:
+            if not item:
+                raise ValueError("an example question must not be empty")
+            if len(item) > MAX_EXAMPLE_CHARS:
+                raise ValueError(f"example {item[:40]!r}... is longer than {MAX_EXAMPLE_CHARS} characters")
+        return cleaned
 
     @field_validator("tools")
     @classmethod

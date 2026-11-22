@@ -39,6 +39,10 @@ def _source_line(label: str, hit: SearchHit) -> str:
     return line
 
 
+def _where(filename: str, locator: str) -> str:
+    return locator if locator.startswith(filename) else f"{filename} > {locator}"
+
+
 def _table_rows(ctx: RequestContext, base: str, table: TableView) -> str:
     labels = [ctx.register_row(base, row, table.header) for row in table.rows]
     return "\n".join(f"[{label}] {row.as_text(table.header)}" for label, row in zip(labels, table.rows, strict=True))
@@ -55,6 +59,7 @@ def _whole_table(ctx: RequestContext, retriever: Retriever, label: str, hit: Sea
     if hit.section_id in ctx.tables_fetched:
         return f"[{label}] the table shown above as {ctx.tables_fetched[hit.section_id]} (cite its row labels)"
     ctx.tables_fetched[hit.section_id] = label
+    ctx.record_step("table", "Showed a whole table the search found", f"{_where(table.filename, table.locator)}: {len(table.rows)} rows")
     edition = f", edition {hit.edition}" if hit.edition else ""
     return (
         f"[{label}] {hit.filename} > {hit.locator} (status: {hit.status.value}{edition}) (whole table: cite a row label "
@@ -74,11 +79,13 @@ def search_documents_tool(ctx: RequestContext, retriever: Retriever) -> BaseTool
         if not query:
             return "Error: give a search query."
         if ctx.seen_query(query):
+            ctx.record_step("search", "Repeated search refused", f'"{query}"')
             return (
                 "You already ran this search; its excerpts are above. Do not repeat it. Answer from the excerpts "
                 "you have, or use status not_found if they do not answer the question."
             )
         if ctx.budget.searches >= ctx.budget.max_searches:
+            ctx.record_step("search", "Search refused: budget reached", f'"{query}"')
             return (
                 f"Search budget reached ({ctx.budget.max_searches} searches). Do not search again. Answer now from "
                 "the excerpts you already have; if they do not answer the question, use status not_found."
@@ -87,7 +94,10 @@ def search_documents_tool(ctx: RequestContext, retriever: Retriever) -> BaseTool
         try:
             result = retriever.search(query, ctx.scope, HITS_PER_SEARCH)
         except KestrelError as exc:
+            ctx.record_step("search", "Search failed", f'"{query}": {exc.user_message}')
             return f"Error: search failed ({exc.user_message})"
+        hits = len(result.hits)
+        ctx.record_step("search", "Searched the documents", f'"{query}": {hits} {"hit" if hits == 1 else "hits"}')
         if not result.hits:
             return "No matching excerpts. Try different words once; if that also finds nothing, use status not_found."
         blocks, repeated = [], []
@@ -134,6 +144,7 @@ def get_table_tool(ctx: RequestContext, retriever: Retriever) -> BaseTool:
         if table is None or not table.rows:
             return f"{base} is not part of a table. Cite it as {base}."
         base = ctx.tables_fetched.setdefault(hit.section_id, base)
+        ctx.record_step("table", "Read a whole table", f"{_where(table.filename, table.locator)}: {len(table.rows)} rows")
         edition = f", edition {table.edition}" if table.edition else ""
         body = _table_rows(ctx, base, table)
         return (
@@ -157,8 +168,10 @@ def calculate_tool(ctx: RequestContext) -> BaseTool:
         try:
             calculation = evaluate(expression)
         except CalculationError as exc:
+            ctx.record_step("calculate", "Calculation refused", f"{expression}: {exc}")
             return f"Error: {exc}"
         ctx.record_calculation(calculation)
+        ctx.record_step("calculate", "Calculated", f"{calculation.expression} = {calculation.text}")
         return f"{calculation.expression} = {calculation.text}"
 
     return StructuredTool.from_function(calculate, name="calculate")

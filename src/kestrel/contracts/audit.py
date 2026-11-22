@@ -57,6 +57,14 @@ class AuditEntry(Frozen):
     """Target of `block` and `unblock` events."""
     detail: str | None = None
     """Free text such as a block reason. Must already be screened."""
+    reason: str | None = None
+    """For `ask`: why the question was not answered (the decline or refusal reason, or the
+    withheld message). A reason written by the model follows the bot's
+    `audit_question_text` policy, exactly like the question text."""
+    failed_checks: tuple[str, ...] = ()
+    """For `ask`: names of evidence checks that still failed after repair."""
+    closest: str | None = None
+    """For `ask`: `filename > locator` of the top-ranked retrieved passage, if any."""
 
     @property
     def cited_document_ids(self) -> tuple[str, ...]:
@@ -127,3 +135,5 @@ class BotSummary(Frozen):
     classification: str
     model: str
     collections: tuple[str, ...] = Field(min_length=1)
+    examples: tuple[str, ...] = ()
+    """Example questions from bot.yaml, shown to help a new user start."""

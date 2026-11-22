@@ -13,8 +13,9 @@ default), so no server process outlives a call.
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from kestrel.errors import KestrelError
 LIST_TIMEOUT_S = 30.0
 CALL_TIMEOUT_S = 60.0
 MAX_RESULT_CHARS = 8000
+MAX_STEP_ARGUMENT_CHARS = 200
 
 
 @dataclass
@@ -73,23 +75,43 @@ def _screen_value(value: Any, screen: PrivacyScreen, policy: PrivacyPolicy, foun
     return value
 
 
-def guard_tool(tool: BaseTool, server: str, screen: PrivacyScreen, policy: PrivacyPolicy) -> BaseTool:
+OnCall = Callable[[str, str], None]
+"""Told `(label, detail)` after each MCP tool call; detail holds only screened arguments."""
+
+
+def _arguments_text(arguments: Any) -> str:
+    text = json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)
+    return text if len(text) <= MAX_STEP_ARGUMENT_CHARS else text[: MAX_STEP_ARGUMENT_CHARS - 3] + "..."
+
+
+def guard_tool(
+    tool: BaseTool, server: str, screen: PrivacyScreen, policy: PrivacyPolicy, on_call: OnCall | None = None
+) -> BaseTool:
     """Wrap an MCP tool: screen its arguments, bound its run time and mark its output as untrusted data."""
+
+    def note(label: str, detail: str) -> None:
+        if on_call is not None:
+            on_call(label, f"{tool.name} on {server}: {detail}")
 
     async def call(**kwargs: Any) -> str:
         found: list[str] = []
         try:
             arguments = _screen_value(kwargs, screen, policy, found)
         except KestrelError:
+            note("Tool call refused", "the arguments could not be screened")
             return "Error: the arguments could not be screened for personal information, so the tool was not called."
         if found and policy.on_personal_information == "block":
+            note("Tool call refused", "the arguments held personal information")
             return "Error: the arguments contain personal information, so the tool was not called. Do not send personal details."
         try:
             result = await asyncio.wait_for(tool.ainvoke(arguments), timeout=CALL_TIMEOUT_S)
         except TimeoutError:
+            note("Tool call failed", "no answer in time")
             return f"Error: tool {tool.name} on server {server} did not answer in time."
         except Exception as exc:  # a failing server must not end the question
+            note("Tool call failed", type(exc).__name__)
             return f"Error: tool {tool.name} on server {server} failed ({type(exc).__name__})."
+        note("Called a tool", _arguments_text(arguments))
         text = _text(result)[:MAX_RESULT_CHARS]
         return f"{UNTRUSTED_NOTICE}\n\nResult of {tool.name} (server {server}):\n{text}"
 
@@ -102,7 +124,12 @@ def guard_tool(tool: BaseTool, server: str, screen: PrivacyScreen, policy: Priva
 
 
 async def load_mcp_tools(
-    specs: Sequence[McpServerSpec], screen: PrivacyScreen, policy: PrivacyPolicy, *, reserved: Sequence[str] = ()
+    specs: Sequence[McpServerSpec],
+    screen: PrivacyScreen,
+    policy: PrivacyPolicy,
+    *,
+    reserved: Sequence[str] = (),
+    on_call: OnCall | None = None,
 ) -> McpTools:
     """Load the allow-listed tools of each server. Never raises for a server problem."""
     from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -124,7 +151,7 @@ async def load_mcp_tools(
                 loaded.warnings.append(f"Tool {tool.name!r} from server {spec.name!r} clashes with another tool name and was not used.")
                 continue
             taken.add(tool.name)
-            loaded.tools.append(guard_tool(tool, spec.name, screen, policy))
+            loaded.tools.append(guard_tool(tool, spec.name, screen, policy, on_call))
         missing = sorted(allowed - {tool.name for tool in tools})
         if missing:
             loaded.warnings.append(f"The tool server {spec.name!r} does not offer the approved tool(s) {missing}.")

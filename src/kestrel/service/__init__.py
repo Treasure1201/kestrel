@@ -21,6 +21,7 @@ from kestrel.contracts import (
     BotSummary,
     DocumentRecord,
     DoctorReport,
+    EditionComparison,
     Embedder,
     Finding,
     IngestReport,
@@ -36,6 +37,7 @@ from kestrel.retrieval import FastEmbedEmbedder, open_retriever
 from kestrel.service import documents as _documents
 from kestrel.service.ask import ask as _ask
 from kestrel.service.doctor import doctor as _doctor
+from kestrel.service.editions import compare_editions as _compare_editions
 from kestrel.service.runtime import BackgroundLoop, ChatModelFactory, Runtime
 from kestrel.store import open_store
 
@@ -66,7 +68,7 @@ class LocalAssistantService:
         return [
             BotSummary(
                 id=bot.id, name=bot.name, description=bot.description, classification=bot.privacy.classification,
-                model=bot.model.default, collections=bot.knowledge.collections,
+                model=bot.model.default, collections=bot.knowledge.collections, examples=bot.examples,
             )
             for bot in self._rt.visible_bots(principal)
         ]
@@ -92,6 +94,9 @@ class LocalAssistantService:
         if document is None or not bots:
             raise InvalidInputError(f"Unknown document {document_id!r}.")
         return self._rt.store.audit.answers_citing(document_id, bot_ids=[bot.id for bot in self._rt.visible_bots(principal)])
+
+    def compare_editions(self, bot_id: str, document_id: str, principal: Principal) -> EditionComparison:
+        return _compare_editions(self._rt, bot_id, document_id, principal)
 
     def audit_tail(self, principal: Principal, limit: int = 20, bot_id: str | None = None) -> list[AuditRecord]:
         if not 1 <= int(limit) <= MAX_AUDIT_LIMIT:

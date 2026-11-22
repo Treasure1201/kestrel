@@ -12,7 +12,7 @@ from kestrel.agent.context import Budget, RequestContext
 from kestrel.agent.mcp_tools import load_mcp_tools
 from kestrel.agent.runner import TurnResult, run_turn
 from kestrel.agent.tools import build_builtin_tools
-from kestrel.contracts import AgentAnswer, BotConfig, CheckIssue, McpServerSpec, ScopeDecision, Screened
+from kestrel.contracts import REPAIRED_PREFIX, AgentAnswer, BotConfig, CheckIssue, McpServerSpec, ScopeDecision, Screened
 from kestrel.errors import BudgetExceededError, ProviderUnavailableError
 from kestrel.service.runtime import Runtime
 from kestrel.verify import repair_message, run_checks
@@ -64,7 +64,10 @@ async def answer_question(
     ctx = outcome.context
     tools = build_builtin_tools(bot.tools, ctx, runtime.retriever)
     if specs:
-        loaded = await load_mcp_tools(specs, runtime.screen, bot.privacy, reserved=[t.name for t in tools] + [ANSWER_TOOL, READ_FILE])
+        loaded = await load_mcp_tools(
+            specs, runtime.screen, bot.privacy, reserved=[t.name for t in tools] + [ANSWER_TOOL, READ_FILE],
+            on_call=lambda label, detail: ctx.record_step("mcp_tool", label, detail),
+        )
         tools += loaded.tools
         outcome.warnings += loaded.warnings
     agent = build_agent(bot, chat_model, tools, ctx.budget)
@@ -76,21 +79,34 @@ async def answer_question(
         )
     outcome.answer = turn.answer
     outcome.issues = _check(question, turn.answer, ctx, scope)
+    _record_checks(ctx, outcome.issues)
     earlier: list[CheckIssue] = []
     while not outcome.passed and ctx.budget.repairs < ctx.budget.max_repairs:
+        failing = sorted({i.check for i in outcome.issues if i.severity == "error"})
+        ctx.record_step("repair", "Asked the model to repair the answer", "failed: " + ", ".join(failing))
         repaired = await _repair(agent, turn, outcome.issues, ctx.budget)
         if repaired is None or repaired.answer is None:
+            ctx.record_step("repair", "Repair not completed", "the budget ran out or no new answer came back")
             break
         earlier += [i for i in outcome.issues if i.severity == "error"]
         turn = repaired
         outcome.answer = repaired.answer
         outcome.issues = _check(question, repaired.answer, ctx, scope)
         outcome.repaired = True
+        _record_checks(ctx, outcome.issues)
     # Issues the repair turn fixed are kept as warnings, so the audit shows why a repair happened.
     outcome.issues += [
-        i.model_copy(update={"severity": "warning", "detail": f"Before repair: {i.detail}"}) for i in earlier
+        i.model_copy(update={"severity": "warning", "detail": f"{REPAIRED_PREFIX}{i.detail}"}) for i in earlier
     ]
     return outcome
+
+
+def _record_checks(ctx: RequestContext, issues: list[CheckIssue]) -> None:
+    failing = sorted({i.check for i in issues if i.severity == "error"})
+    if failing:
+        ctx.record_step("checks", "Evidence checks failed", ", ".join(failing))
+    else:
+        ctx.record_step("checks", "Evidence checks passed", "no check failed")
 
 
 async def _repair(agent: object, turn: TurnResult, issues: list[CheckIssue], budget: Budget) -> TurnResult | None:
