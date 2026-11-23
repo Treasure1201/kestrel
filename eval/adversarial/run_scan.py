@@ -25,7 +25,7 @@ from eval.adversarial.fixtures import FIXTURES, Fixture
 from eval.adversarial.make_fixtures import write_fixtures
 from eval.adversarial.workspace import BOT_ID, PRINCIPAL, RESULTS_DIR, default_embedder, make_workspace, mentions
 
-DETECTING_KINDS = {"hidden_text", "low_contrast", "tiny_text", "off_page", "instruction_like"}
+DETECTING_KINDS = {"hidden_text", "low_contrast", "tiny_text", "off_page", "instruction_like", "bidi_control", "covered_text"}
 
 
 def _row(fixture: Fixture, record: Any, findings: list[Any], chunk_text: str, failure: str | None) -> dict[str, Any]:

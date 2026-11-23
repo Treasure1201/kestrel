@@ -147,7 +147,8 @@ class ParsedDocument(Frozen):
 
 
 FindingKind = Literal[
-    "hidden_text", "low_contrast", "tiny_text", "off_page", "instruction_like", "parse_warning"
+    "hidden_text", "low_contrast", "tiny_text", "off_page", "instruction_like", "parse_warning",
+    "bidi_control", "covered_text",
 ]
 
 

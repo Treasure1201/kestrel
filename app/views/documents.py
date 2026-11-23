@@ -19,8 +19,10 @@ FINDING_LABEL = {
     "off_page": "Off-page text removed",
     "instruction_like": "Instruction-like text",
     "parse_warning": "Parse warning",
+    "bidi_control": "Bidirectional control text",
+    "covered_text": "Text covered by a shape removed",
 }
-DATA_KINDS = {"hidden_text", "low_contrast", "tiny_text", "off_page", "instruction_like"}
+DATA_KINDS = {"hidden_text", "low_contrast", "tiny_text", "off_page", "instruction_like", "bidi_control", "covered_text"}
 SEVERITY = {"high": ("high severity", "red"), "warning": ("warning", "orange"), "info": ("information", "gray")}
 
 
