@@ -17,6 +17,10 @@ def test_answer_exactly_what_was_asked() -> None:
     assert "put a condition attached to the rule in the answer, and leave out background" in prompt
 
 
+def test_a_decline_says_only_what_the_documents_do_not_state() -> None:
+    assert "do not add what the documents cover or offer instead" in _flat(CORE_PROMPT)
+
+
 def test_range_lookups_use_the_tool_value() -> None:
     prompt = _flat(CORE_PROMPT)
     assert "call get_table with value set to that number and use the row it names" in prompt
