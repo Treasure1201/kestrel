@@ -41,7 +41,7 @@ def test_example_questions_are_buttons_that_ask(tmp_path: Path) -> None:
     button.click().run()
     assert not at.exception, at.exception
     assert fake.asked and fake.asked[0][1] == "What is the waiting period?"
-    assert any(b.label == "Who may join?" for b in at.button)  # still offered after the first answer
+    assert not any(b.label == "Who may join?" for b in at.button)  # offered only in an empty conversation
 
 
 def test_how_this_was_answered_lists_the_service_steps(tmp_path: Path) -> None:
@@ -49,9 +49,9 @@ def test_how_this_was_answered_lists_the_service_steps(tmp_path: Path) -> None:
     at.chat_input[0].set_value("What is the waiting period?").run()
     shown = text(at)
     assert not at.exception, at.exception
-    assert 'Searched the documents: "waiting period": 6 hits' in shown
-    assert "Chose the documents to search: current documents only" in shown
-    assert "Audit record written (trace trace-answered)" in shown
+    assert 'Searched the documents</div><div class="k-detail">"waiting period": 6 hits' in shown
+    assert "Chose the documents to search" in shown and "current documents only" in shown
+    assert "Audit record written" in shown and "trace trace-answered" in shown
 
 
 def test_problems_fixed_by_repair_are_not_shown_as_failures(tmp_path: Path) -> None:

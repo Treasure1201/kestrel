@@ -1,4 +1,4 @@
-"""Shared display pieces: the small CSS block, badges, chips and formatting.
+"""Shared display pieces: badges, chips, quotes and formatting. The style sheet is in `theme.py`.
 
 Colour is never the only signal: every badge carries words, and grid cells carry a
 letter explained by a legend.
@@ -13,35 +13,27 @@ import streamlit as st
 
 from kestrel.contracts import AskResult, CheckIssue, DocumentStatus, EvidenceReport, Outcome, repaired_detail
 
-CSS = """
-<style>
-.k-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
-.k-chip{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:12px;
-  font-weight:500;border:1px solid #D5DBE3;background:#fff;color:#3E4955;white-space:nowrap}
-.k-chip.k-label{font-family:ui-monospace,monospace;background:#EEF3FB;border-color:#C9D7EE;color:#143F82}
-.k-lbl{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5B6673;margin:6px 0 2px}
-.k-calc{background:#F7F8FA;border-radius:8px;padding:10px 14px;margin:4px 0}
-.k-calc code{font-size:14px;background:none}
-.k-quote{margin:4px 0;padding:8px 12px;border-left:3px solid #1F5FBF;background:#F7F8FA;font-size:13px;
-  line-height:1.5;white-space:pre-wrap}
-.k-data{margin:4px 0;padding:8px 12px;background:#FFF9F1;border:1px dashed #B4540A;border-radius:6px;
-  font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;color:#3E4955;white-space:pre-wrap}
-.k-data::before{content:"Quoted document text, shown as data only";display:block;font-family:system-ui,sans-serif;
-  font-size:11px;font-weight:600;color:#8A3F00;margin-bottom:4px}
-.k-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:#3E4955;margin:4px 0}
-.k-cell{display:inline-block;width:20px;height:20px;border-radius:5px;text-align:center;line-height:20px;
-  font-size:12px;font-weight:600;margin-right:4px}
-</style>
-"""
+from kestrel_app.theme import CSS
+
 
 OUTCOME_BADGE: dict[Outcome, tuple[str, str, str]] = {
-    Outcome.ANSWERED: ("Answered", "blue", ":material/chat:"),
-    Outcome.PARTIAL: ("Partial answer", "orange", ":material/rule:"),
+    Outcome.ANSWERED: ("Answered", "green", ":material/check_circle:"),
+    Outcome.PARTIAL: ("Partial answer", "blue", ":material/rule:"),
     Outcome.NOT_FOUND: ("Not in the documents", "orange", ":material/search_off:"),
     Outcome.REFUSED: ("Refused", "gray", ":material/block:"),
     Outcome.WITHHELD: ("Withheld", "red", ":material/visibility_off:"),
     Outcome.ERROR: ("Error", "red", ":material/error:"),
 }
+
+OUTCOME_TONE: dict[Outcome, str] = {
+    Outcome.ANSWERED: "ok",
+    Outcome.PARTIAL: "info",
+    Outcome.NOT_FOUND: "warn",
+    Outcome.REFUSED: "neutral",
+    Outcome.WITHHELD: "bad",
+    Outcome.ERROR: "bad",
+}
+"""The card tone for each outcome; it always comes with the badge word."""
 
 CHECK_LABELS: dict[str, str] = {
     "schema": "Answer format",
@@ -64,15 +56,15 @@ STATUS_BADGE: dict[DocumentStatus, tuple[str, str]] = {
 }
 
 GRID_COLOURS: dict[str, tuple[str, str]] = {
-    "C": ("#D5E6F7", "#143F82"),
-    "D": ("#E3F1F7", "#0B4F6C"),
-    "P": ("#FFE2BF", "#8A3F00"),
-    "N": ("#FFE2BF", "#8A3F00"),
-    "X": ("#8A3F00", "#FFFFFF"),
-    "W": ("#8A3F00", "#FFFFFF"),
-    "M": ("#F4D6D6", "#7A1F1F"),
-    "E": ("#5B6673", "#FFFFFF"),
-    "?": ("#EEF1F5", "#3E4955"),
+    "C": ("#E2F5F0", "#0B7A66"),
+    "D": ("#E7F0FB", "#0B4F9E"),
+    "P": ("#FFF3D1", "#7A4B00"),
+    "N": ("#FFF3D1", "#7A4B00"),
+    "X": ("#A1301C", "#FFFFFF"),
+    "W": ("#A1301C", "#FFFFFF"),
+    "M": ("#FDEBE7", "#A1301C"),
+    "E": ("#3C4A5C", "#FFFFFF"),
+    "?": ("#EAF0F6", "#3C4A5C"),
 }
 
 ATTESTATION = (
@@ -93,6 +85,12 @@ def esc(text: object) -> str:
     return html.escape(str(text), quote=True)
 
 
+def html_text(text: object, strip: bool = True) -> str:
+    """Text for inside a raw HTML block: escaped, with line breaks as `<br>` so no blank line ends the block."""
+    raw = str(text).strip() if strip else str(text)
+    return "<br>".join(html.escape(raw, quote=False).splitlines())
+
+
 def md(text: object) -> str:
     """Text safe to pass to `st.markdown`: no raw HTML, no LaTeX from `$` signs."""
     return html.escape(str(text), quote=False).replace("$", "\\$")
@@ -111,10 +109,28 @@ def section_label(text: str) -> None:
     st.markdown(f'<div class="k-lbl">{esc(text)}</div>', unsafe_allow_html=True)
 
 
-def quote(text: str, as_data: bool = False) -> None:
-    """A verbatim quote; `as_data` draws hidden or suspicious text in a distinct, labelled box."""
-    cls = "k-data" if as_data else "k-quote"
-    st.markdown(f'<div class="{cls}">{esc(text)}</div>', unsafe_allow_html=True)
+DATA_NOTE = "Quoted document text, shown as data only"
+
+
+def quote(text: str, as_data: bool = False, note: str = DATA_NOTE, highlight: str = "") -> None:
+    """A verbatim quote; `as_data` draws hidden, suspicious or tool text in a distinct, labelled box.
+
+    `highlight` marks the first case-insensitive occurrence of that text inside the quote.
+    """
+    if as_data:
+        st.markdown(f'<div class="k-data" data-note="{esc(note)}">{html_text(text)}</div>', unsafe_allow_html=True)
+        return
+    st.markdown(f'<div class="k-quote">{marked(text, highlight)}</div>', unsafe_allow_html=True)
+
+
+def marked(text: str, part: str) -> str:
+    """Escaped `text` with the first occurrence of `part` wrapped in `<mark>`."""
+    at = text.lower().find(part.lower().strip()) if part.strip() else -1
+    if at < 0:
+        return html_text(text)
+    stop = at + len(part.strip())
+    before, inside, after = (html_text(piece, strip=False) for piece in (text[:at], text[at:stop], text[stop:]))
+    return f"{before}<mark>{inside}</mark>{after}"
 
 
 def outcome_badge(outcome: Outcome) -> None:
@@ -143,7 +159,7 @@ def evidence_badge(result: AskResult) -> None:
         return
     if report.passed:
         suffix = " after one repair" if report.repaired else ""
-        st.badge(f"Evidence checks passed{suffix}", color="blue", icon=":material/check:")
+        st.badge(f"Evidence checks passed{suffix}", color="green", icon=":material/check:")
     else:
         st.badge("Evidence checks failed", color="red", icon=":material/close:")
 

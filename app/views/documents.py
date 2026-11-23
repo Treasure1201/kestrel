@@ -65,7 +65,7 @@ def _ingest_report(bot_id: str) -> None:
 
 
 def _metric(column: st.delta_generator.DeltaGenerator, label: str, value: int, caption: str) -> None:
-    with column.container(border=True):
+    with column.container(border=True, key=f"mcard-docs-{label}", height="stretch"):
         st.metric(label, value)
         st.caption(caption or " ")
 
@@ -81,8 +81,8 @@ def _metrics(counts: metrics.DocumentCounts) -> None:
     _metric(cols[4], "Findings", counts.findings, kinds or "none")
 
 
-def _finding(finding: Finding) -> None:
-    with st.container(border=True):
+def _finding(finding: Finding, index: int) -> None:
+    with st.container(border=True, key=f"panel-finding-{index}"):
         with st.container(horizontal=True, vertical_alignment="center"):
             st.badge(FINDING_LABEL.get(finding.kind, finding.kind), color="orange", icon=":material/warning:")
             label, colour = SEVERITY.get(finding.severity, (finding.severity, "gray"))
@@ -135,7 +135,7 @@ def _actions(svc: AssistantService, who: Principal, doc: DocumentRecord) -> None
 
 
 def _details(svc: AssistantService, who: Principal, doc: DocumentRecord, findings: list[Finding], cited: list[AuditRecord] | None) -> None:
-    with st.container(border=True):
+    with st.container(border=True, key="panel-details"):
         with st.container(horizontal=True, vertical_alignment="center"):
             st.subheader(doc.filename)
             status_badge(doc.status)
@@ -148,8 +148,8 @@ def _details(svc: AssistantService, who: Principal, doc: DocumentRecord, finding
         with tab_findings:
             if not findings:
                 st.caption("The scanner found nothing in this document.")
-            for finding in findings:
-                _finding(finding)
+            for index, finding in enumerate(findings):
+                _finding(finding, index)
         with tab_cited:
             if cited is None:
                 st.caption("Past answers could not be read.")
@@ -189,13 +189,13 @@ def _changed_values(svc: AssistantService, who: Principal, bot_id: str, doc: Doc
 
 def _history(svc: AssistantService, who: Principal, bot_id: str, documents: list[DocumentRecord], doc: DocumentRecord) -> None:
     editions = metrics.edition_history(documents, doc)
-    with st.container(border=True):
+    with st.container(border=True, key="panel-history"):
         st.subheader(f"Edition history: {doc.family}" if doc.family else "Edition history")
         if not editions:
             st.caption("This document has no other editions.")
             return
         for index, edition in enumerate(editions):
-            with st.container(border=True):
+            with st.container(border=True, key=f"edition-{index}"):
                 with st.container(horizontal=True, vertical_alignment="center"):
                     st.markdown(f"**{md(edition.edition or 'undated')}**")
                     status_badge(edition.status)

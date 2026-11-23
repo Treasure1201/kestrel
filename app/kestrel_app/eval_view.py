@@ -50,7 +50,7 @@ def _cell_style(value: object) -> str:
 
 def _detail(record: EvalRecord, review: results.HumanReview | None) -> None:
     result = record.result
-    with st.container(border=True):
+    with st.container(border=True, key="panel-eval-detail"):
         st.markdown(f"**{record.question_id}** · `{record.model}` · run {record.run}")
         st.markdown(md(record.question))
         outcome_badge(result.outcome)
