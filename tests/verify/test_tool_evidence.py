@@ -79,12 +79,26 @@ def test_a_rule_in_words_needs_a_document_citation() -> None:
     assert any("document excerpt" in i.detail for i in issues)
 
 
-def test_a_report_of_tool_facts_may_cite_only_the_tool() -> None:
-    ans = answer("There are 8 working days from 11 March to 20 March.", [("t1", "8")])
-    assert checks(ans) == []
+def test_a_tool_result_never_stands_alone_for_a_bot_with_documents() -> None:
+    fact = answer("There are 8 working days from 11 March to 20 March.", [("t1", "8")])
+    assert names(checks(fact)) == ["schema"]
+    invented = answer("All requests are approved within 8 hours without documents.", [("t1", "8")])
+    issues = checks(invented)
+    assert names(issues) == ["schema"]
+    assert "document excerpt" in issues[0].detail
+    with_document = answer("There are 8 working days from 11 March to 20 March, less than the required at least 10 working days.",
+                           [("c1", QUOTE), ("t1", "8")])
+    assert checks(with_document) == []
 
 
 def test_tool_citations_alone_are_enough_for_a_bot_without_documents() -> None:
     ans = answer("Leave requests should be planned around the working-day count.", [("t1", "8")])
     assert checks(ans, evidence={}, has_documents=False) == []
     assert "schema" in names(checks(ans, evidence={}))  # no tool fact reported: a document is needed
+
+
+def test_prompt_states_the_document_rule_only_for_a_bot_with_documents() -> None:
+    from kestrel.agent.prompt import system_prompt
+
+    assert "never stand alone" in system_prompt("guide", extra_tools=["working_days_between"])
+    assert "never stand alone" not in system_prompt("guide", extra_tools=["working_days_between"], documents=False)

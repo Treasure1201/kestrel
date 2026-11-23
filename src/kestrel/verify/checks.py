@@ -4,8 +4,8 @@ Pure functions: they read the screened question, the model's `AgentAnswer`, the
 evidence handed to the model in this request, the scope decision and the calculations
 the `calculate` tool performed, and return `CheckIssue`s. A cited MCP tool result
 (`t1`) is evidence like an excerpt: its quote must be verbatim in the result and its
-numbers ground the answer and calculation operands; it is not a document, and
-`check_document_cited` decides when it may stand alone. Nothing here calls a model
+numbers ground the answer and calculation operands; it is not a document, so
+`check_document_cited` lets it stand alone only for a bot without documents. Nothing here calls a model
 or a database. Every issue's `detail` names the label, quote or number at fault and
 what to do about it, because it is sent back to the model in the repair turn.
 """
@@ -272,29 +272,21 @@ def check_numbers(ctx: _Context) -> list[CheckIssue]:
 def check_document_cited(ctx: _Context) -> list[CheckIssue]:
     """An answer that cites only tool results, for a bot with document collections.
 
-    The rule: a tool result can stand alone only as a report of the facts the tool
-    returned. Such an answer is accepted when at least one number in it comes from a
-    cited tool result and every number in it traces to the cited tool results, the
-    question or a verified calculation. Anything else (a rule, a condition, a statement
-    in words) is what the bot's documents are for, so it needs at least one document
-    citation. A bot without document collections may cite tool results alone.
+    The rule: for a bot with document collections, an `answered` or `partial` answer
+    must cite at least one document excerpt. Tool results may support it (their
+    numbers ground the answer and calculation operands) but never stand alone: a
+    number that matches a tool result says nothing about the words around it, so an
+    invented rule could otherwise pass on one matching number. A bot without document
+    collections may cite tool results alone.
     """
     if not ctx.has_documents or ctx.declined or ctx.cited or not ctx.cited_tools:
-        return []
-    from_tools = ctx.tool_support(cited_only=True)
-    others = numbers_in(ctx.question) | percent_rates(ctx.question) | ctx.verified
-    numbers = set().union(*(numbers_in(text) for text in [ctx.answer.answer, *ctx.answer.caveats]))
-    reports_tool_facts = any(contains_number(from_tools, n) for n in numbers) and all(
-        contains_number(from_tools | others, n) for n in numbers
-    )
-    if reports_tool_facts:
         return []
     labels = ", ".join(label for label, _ in ctx.cited_tools)
     return [CheckIssue(
         check="schema",
-        detail=f"The answer cites only tool results ({labels}). A tool result supports the facts the tool returned; "
-        "the rules and statements in the answer need a citation of a document excerpt from search_documents. Cite "
-        "the excerpt that states them, or use not_found if the documents do not say.",
+        detail=f"The answer cites only tool results ({labels}). A tool result supports the facts the tool returned, "
+        "but every answer also needs a citation of a document excerpt from search_documents. Cite the excerpt the "
+        "answer relies on, or use not_found if the documents do not say.",
     )]
 
 

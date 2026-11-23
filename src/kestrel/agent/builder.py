@@ -46,7 +46,7 @@ def build_agent(
     return create_deep_agent(
         model=chat_model,
         tools=list(tools),
-        system_prompt=system_prompt(bot.prompt_text, extra_tools=extra, skills=has_skills),
+        system_prompt=system_prompt(bot.prompt_text, extra_tools=extra, skills=has_skills, documents=bool(bot.knowledge.collections)),
         backend=backend,
         skills=skill_routes or None,
         permissions=permissions,
