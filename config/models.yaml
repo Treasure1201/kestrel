@@ -11,6 +11,8 @@ ollama:
   num_ctx: 32768
   num_predict: 8192
   keep_alive: 30m
+  # Model names Ollama forwards to its hosted service; external even on a loopback endpoint.
+  hosted_model_suffixes: ["-cloud", ":cloud"]
 
 # Model-name prefixes that reject temperature=0; for these the provider default is used.
 # "*" means every model of the provider.

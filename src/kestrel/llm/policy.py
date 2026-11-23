@@ -1,9 +1,12 @@
 """Egress policy: where text may be sent, and in-process tracing switches.
 
 Every destination that can receive text is tagged `on-device` or `external`. Local
-Ollama counts as on-device only when its base URL host is a loopback address; the
-hosted providers are always external; an MCP server carries its own locality in
-`config/mcp_servers.yaml`. A `confidential` bot may use on-device destinations only.
+Ollama counts as on-device only when its base URL host is a loopback address and the
+model is not one Ollama passes through to its hosted service (names ending in
+`ollama.hosted_model_suffixes` of `config/models.yaml`, by default `-cloud` and
+`:cloud`); the hosted providers are always external; an MCP server carries its own
+locality in `config/mcp_servers.yaml`. A `confidential` bot may use on-device
+destinations only.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from urllib.parse import urlsplit
 from kestrel.config import Settings
 from kestrel.contracts import BotConfig, Locality, McpServerSpec
 from kestrel.errors import ConfigurationError, EgressDeniedError
+from kestrel.llm.catalog import load_model_catalog
 from kestrel.llm.refs import ModelRef, parse_model_ref
 
 LOCAL_OLLAMA_EXAMPLE = "KESTREL_OLLAMA_BASE_URL=http://127.0.0.1:11434"
@@ -62,9 +66,11 @@ def is_loopback_url(url: str) -> bool:
 def model_locality(ref: str | ModelRef, settings: Settings) -> Locality:
     """Locality of a model destination."""
     parsed = parse_model_ref(ref)
-    if parsed.provider == "ollama" and is_loopback_url(settings.ollama_base_url):
-        return "on-device"
-    return "external"
+    if parsed.provider != "ollama" or not is_loopback_url(settings.ollama_base_url):
+        return "external"
+    if load_model_catalog(settings.config_dir).ollama.is_hosted(parsed.model):
+        return "external"
+    return "on-device"
 
 
 def destinations(model_ref: str | ModelRef, mcp_specs: Iterable[McpServerSpec], settings: Settings) -> tuple[Destination, ...]:

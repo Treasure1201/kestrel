@@ -100,3 +100,20 @@ def test_disable_tracing_overrides_environment(monkeypatch: pytest.MonkeyPatch) 
     assert os.environ["LANGCHAIN_TRACING_V2"] == "false"
     monkeypatch.setenv("LANGSMITH_TRACING", "true")  # global flag wins even if something re-enables the variable
     assert tracing_is_enabled() is False
+
+
+@pytest.mark.parametrize("model", ["gpt-oss:120b-cloud", "deepseek-v3.1:671b-cloud", "glm-4.6:cloud", "Qwen3:CLOUD"])
+def test_loopback_ollama_passing_through_to_a_hosted_model_is_external(tmp_path: Path, settings: Settings, model: str) -> None:
+    assert model_locality(f"ollama:{model}", settings) == "external"
+    with pytest.raises(EgressDeniedError):
+        check_egress(make_bot(tmp_path, classification="confidential"), f"ollama:{model}", (), settings)
+
+
+def test_hosted_model_suffixes_are_configurable(tmp_path: Path, settings: Settings) -> None:
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "models.yaml").write_text('ollama:\n  hosted_model_suffixes: ["-remote"]\n', encoding="utf-8")
+    custom = settings.model_copy(update={"config_dir": config})
+    assert model_locality("ollama:llama3:8b-remote", custom) == "external"
+    assert model_locality("ollama:gpt-oss:20b", custom) == "on-device"
+    assert model_locality("ollama:cloudy-model:7b", settings) == "on-device"

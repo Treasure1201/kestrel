@@ -34,6 +34,13 @@ class OllamaDefaults(Frozen):
     num_ctx: int = Field(default=32768, ge=2048, le=1_048_576)
     num_predict: int = Field(default=8192, ge=256, le=131_072)
     keep_alive: str = "30m"
+    hosted_model_suffixes: tuple[str, ...] = ("-cloud", ":cloud")
+    """Model-name endings that Ollama passes through to its hosted service: external even on a loopback endpoint."""
+
+    def is_hosted(self, model: str) -> bool:
+        """Whether a local Ollama would forward `model` to a hosted service."""
+        name = model.strip().lower()
+        return any(name.endswith(suffix.lower()) for suffix in self.hosted_model_suffixes if suffix)
 
 
 class ModelCatalog(Frozen):
