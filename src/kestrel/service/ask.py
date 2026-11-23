@@ -28,6 +28,7 @@ from kestrel.contracts import (
     PrivacyPolicy,
     ResolvedCitation,
     ScopeDecision,
+    TableRowView,
     Screened,
     SearchScope,
     Usage,
@@ -83,6 +84,14 @@ def screen_question(runtime: Runtime, text: str, policy: PrivacyPolicy) -> Scree
         raise PrivacyBlockedError("The question could not be screened for personal information, so it was not sent.", detail=type(exc).__name__) from None
 
 
+def _row_locator(locator: str, row: TableRowView | None) -> str:
+    """Name the row in a table citation, so a reader can find the exact line relied on."""
+    if row is None or f"row {row.row_number}" in locator:
+        return locator
+    cells = f" (cells {row.address})" if row.address else ""
+    return f"{locator}, row {row.row_number}{cells}"
+
+
 def _resolve(answered: Answered) -> tuple[ResolvedCitation, ...]:
     resolved = []
     for citation in answered.answer.citations if answered.answer else ():
@@ -103,7 +112,7 @@ def _resolve(answered: Answered) -> tuple[ResolvedCitation, ...]:
         hit = evidence.hit
         resolved.append(ResolvedCitation(
             label=label, quote=citation.quote, supports=citation.supports, filename=hit.filename, title=hit.title,
-            locator=hit.locator, document_id=hit.document_id, section_id=hit.section_id, edition=hit.edition,
+            locator=_row_locator(hit.locator, evidence.row), document_id=hit.document_id, section_id=hit.section_id, edition=hit.edition,
             status=hit.status, row_number=evidence.row.row_number if evidence.row else None,
         ))
     return tuple(resolved)
