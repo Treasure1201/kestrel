@@ -1,6 +1,6 @@
 # Demo script (about ten minutes)
 
-For the follow-up session. Everything runs from the repository root in one terminal plus a browser.
+Use one terminal and a browser for the follow-up session. Run every command from the repository root.
 
 ## Before the session
 
@@ -11,9 +11,9 @@ uv run kestrel ingest --all            # both bots; a second run reports "unchan
 uv run streamlit run app/streamlit_app.py     # leave running at http://localhost:8501
 ```
 
-`.env` holds `KESTREL_MODEL=anthropic:claude-haiku-5-5` (or the primary model from the results) and `KESTREL_ROLES=call-centre-agent,broker,staff,operator`. Ollama is running with `gpt-oss:20b` pulled, for the staff bot. Have the latest results folder open in a file explorer.
+`.env` holds `KESTREL_MODEL=anthropic:claude-haiku-5-5` (or the primary model from the results) and `KESTREL_ROLES=call-centre-agent,broker,staff,operator`. Start Ollama with `gpt-oss:20b` pulled for the staff bot, and open the latest results folder in a file explorer.
 
-Document ids are derived from the file's hash, so they are the same on every machine; `kestrel docs list` shows them. In this set: claims FAQ `8e3702ea74d916f3`, group life guide 2026 `ab98804067c942f4`.
+Document ids come from file hashes and stay the same across machines. Use `kestrel docs list` to find them. For this set: claims FAQ `8e3702ea74d916f3`, group life guide 2026 `ab98804067c942f4`.
 
 ## The script
 
@@ -33,7 +33,7 @@ Document ids are derived from the file's hash, so they are the same on every mac
 
 ### MCP client configuration
 
-For Claude Desktop, add to `claude_desktop_config.json` (other MCP clients take the same command and arguments), with the absolute path of the repository:
+Add this to `claude_desktop_config.json` for Claude Desktop, replacing the example path with the repository's absolute path. Other MCP clients use the same command and arguments:
 
 ```json
 {
@@ -50,9 +50,11 @@ For Claude Desktop, add to `claude_desktop_config.json` (other MCP clients take 
 
 ## Three safe live changes
 
-Each is configuration only, takes a minute, and is undone by `git checkout`.
+These changes use configuration only. Undo them with `git checkout`.
 
-**1. Add an example question to a bot.** In `bots/kestrel-products/bot.yaml`, add a line under `examples:` (at most six, each under 120 characters):
+### 1. Add an example question
+
+In `bots/kestrel-products/bot.yaml`, add a line under `examples:` (at most six, each under 120 characters):
 
 ```yaml
   - How much funeral cover is provided for a member's 4-year-old child?
@@ -60,7 +62,9 @@ Each is configuration only, takes a minute, and is undone by `git checkout`.
 
 Show it with `uv run kestrel bots --examples` and as a new button on the Ask page after a browser refresh.
 
-**2. Add a redaction pattern.** In `bots/kestrel-products/bot.yaml`, under `privacy:`, add:
+### 2. Add a redaction pattern
+
+In `bots/kestrel-products/bot.yaml`, under `privacy:`, add:
 
 ```yaml
   extra_patterns:
@@ -70,7 +74,9 @@ Show it with `uv run kestrel bots --examples` and as a new button on the Ask pag
 
 Then `uv run kestrel ask "Broker BRK-12345 asks: what waiting period applies to disability income Option B?"`. The notice lists `broker_code` and the audit record holds `[BROKER_CODE]`. An invalid regular expression fails at load with the field name.
 
-**3. Add a new bot.** Create `bots/it-helpdesk/bot.yaml`:
+### 3. Add a bot
+
+Create `bots/it-helpdesk/bot.yaml`:
 
 ```yaml
 id: it-helpdesk
@@ -89,7 +95,7 @@ examples:
   - How often must I change my password?
 ```
 
-plus `bots/it-helpdesk/prompt.md` with one sentence of persona, and `data/source/it-helpdesk/passwords.md`:
+Add a sentence describing the bot's persona in `bots/it-helpdesk/prompt.md`, and create `data/source/it-helpdesk/passwords.md`:
 
 ```markdown
 # Passwords
@@ -99,10 +105,10 @@ plus `bots/it-helpdesk/prompt.md` with one sentence of persona, and `data/source
 Passwords must be changed every 90 days. A new password needs at least 14 characters.
 ```
 
-Then `uv run kestrel ingest --bot it-helpdesk`, `uv run kestrel ask --bot it-helpdesk "How often must I change my password?"`, and show that `uv run kestrel search --bot kestrel-products "password"` finds nothing from the new collection. No code changed. [ADDING_A_BOT.md](ADDING_A_BOT.md) covers the full version with a manifest, skills and an MCP server.
+Then `uv run kestrel ingest --bot it-helpdesk`, `uv run kestrel ask --bot it-helpdesk "How often must I change my password?"`, and show that `uv run kestrel search --bot kestrel-products "password"` finds nothing from the new collection. The new bot needs no code changes. [ADDING_A_BOT.md](ADDING_A_BOT.md) also covers a manifest, skills and an MCP server.
 
 ## If something fails on screen
 
 - A provider error: `--model ollama:gpt-oss:20b` runs the same question locally.
-- A withheld answer: open the evidence panel (or `--trace`) and read the check that failed; it is a feature to show, not hide.
+- A withheld answer: open the evidence panel (or `--trace`), read the failed check and explain why the answer was held back.
 - Anything else: `uv run kestrel doctor` prints the fix.

@@ -1,10 +1,10 @@
 # Evaluation
 
-How the numbers in the README were produced, how to reproduce them, and what they do and do not show.
+I used repeated model runs, automatic grading and human review to assess the answers. This document records the results, the failures and the commands to reproduce them.
 
 ## Reproduce
 
-All commands run from the repository root after `uv sync` and a key in `.env`. Each question costs a few model calls; see the cost column in the results.
+Run these commands from the repository root after `uv sync`, with a key in `.env`. Each question uses a few model calls; the results include cost.
 
 ```
 uv run python -m eval.run_eval --models anthropic:claude-haiku-5-5            # the 15 questions, one model
@@ -51,9 +51,9 @@ The automatic grade comes from `eval/grading.py` and a gold file per question se
 | correctly declined / incorrectly declined | a decline where the gold expects one / does not |
 | withheld, error | the evidence checks held the answer back, or the request failed; counted apart, never folded into the other grades |
 
-Where it is strict: a condition such as "working days" or "after receipt of all documents" missing makes an answer partial even when the number is right; a superseded figure in a clause without a marker such as "2025" or "previous" makes it incorrect. A retrieval miss (no retrieved excerpt came from the expected section) is reported beside the grade.
+A missing condition such as "working days" or "after receipt of all documents" makes an answer partial even if the number is right. A superseded figure without a marker such as "2025" or "previous" makes it incorrect. Retrieval misses, where no excerpt came from the expected section, are reported alongside the grade.
 
-Where it is wrong: it is string matching. It marked a correct answer incorrect because the answer said the 10 working days is "not a guaranteed time", which matched the forbidden word "guarantee". The gold file now allows a negated guarantee and the run was re-graded offline; both grades are kept in the run folder.
+String matching also produces false alarms. One correct answer described the 10 working days as "not a guaranteed time" and matched the forbidden word "guarantee". I changed the gold file to allow a negated guarantee and re-graded the saved run offline. Both grades remain in the run folder.
 
 ## Human review
 
@@ -61,28 +61,28 @@ The automatic grade is a screening signal and is never copied into the workbook.
 
 ## Results
 
-Three runs of the 15 test questions per model on the final code (13 answerable, 2 not, so 39 and 6 per model). Grades are automatic; I read every answer not graded correct.
+I ran each model on the final code three times: 15 questions per run, 13 answerable and 2 not, giving 39 and 6 per model. These are automatic grades; I read every answer not graded correct.
 
 | Model | Correct | Correctly declined | Other | Needed a repair | Cost per question | Median time |
 |---|---|---|---|---|---|---|
 | Claude Haiku 5.5 (default) | 39 of 39 | 6 of 6 | 0 | 1 | US$0.0015 | 3.9 s |
 | Claude Sonnet 5.5 | 39 of 39 | 6 of 6 | 0 | 3 | US$0.027 | 4.6 s |
-| OpenAI `gpt-6.1-sol` | 39 of 39 | 6 of 6 | 0 | 3 | not priced | 6.0 s |
-| Kimi `kimi-k3.1-pro` (Ollama Cloud) | 39 of 39 | 6 of 6 | 0 | 0 | not priced | 6.9 s |
-| `gpt-oss:20b` (Ollama Cloud) | 39 of 39 | 6 of 6 | 0 | 0 | not priced | 7.0 s |
+| OpenAI `gpt-6.1-sol` | 39 of 39 | 6 of 6 | 0 | 3 | US$0.016 | 6.0 s |
+| Kimi `kimi-k3.1-pro` (Ollama Cloud) | 39 of 39 | 6 of 6 | 0 | 0 | US$0.025 | 6.9 s |
+| `gpt-oss:20b` (Ollama Cloud) | 39 of 39 | 6 of 6 | 0 | 0 | US$0.0009 | 7.0 s |
 | `gpt-oss:20b` (local Ollama) | 39 of 39 | 6 of 6 | 0 | 0 | no API charge | 5.7 s |
-| DeepSeek `deepseek-v4.1-flash` (Ollama Cloud) | 37 of 39 | 6 of 6 | 1 partial, 1 graded incorrect | 1 | not priced | 2.7 s |
-| GLM `glm-5.3-flash` (Ollama Cloud) | 37 of 39 | 6 of 6 | 2 graded incorrect | 1 | not priced | 3.5 s |
+| DeepSeek `deepseek-v4.1-flash` (Ollama Cloud) | 37 of 39 | 6 of 6 | 1 partial, 1 graded incorrect | 1 | US$0.0033 | 2.7 s |
+| GLM `glm-5.3-flash` (Ollama Cloud) | 37 of 39 | 6 of 6 | 2 graded incorrect | 1 | US$0.0017 | 3.5 s |
 
 No answer was withheld or errored. DeepSeek's partial answer is a real miss: it dropped the condition "before normal retirement age". The three answers graded incorrect give the right figure but volunteer a neighbouring one the gold answers forbid (for example the disability limit beside the group life limit), so I do not recommend those two models. "Needed a repair" counts answers whose first draft failed an evidence check and was corrected. The submitted workbook is one further Haiku run on the final commit: 13 correct, 2 correctly declined, no repairs. All runs: [results/report.md](../results/report.md).
 
 - Reworded set (10 questions written without sight of any model answer), Claude Haiku 5.5: 8 graded correct, 1 correctly declined and 1 graded incorrect, which is a grader false alarm (the answer, R65 000, is right). Search alone ranked the needed section first for 13 of 13 test questions but only 7 of 9 reworded ones, so retrieval depends on wording more than the headline shows.
-- Measured from token counts at list prices in `config/pricing.yaml`: about US$0.0015 on Claude Haiku 5.5 (roughly 11 000 input and 600 output tokens over two or three model calls) and US$0.027 on Claude Sonnet 5.5. The other hosted models have no price in the config, so their cost is shown as unknown rather than guessed; local Ollama has no API charge. Building and evaluating this cost roughly US$6 in Anthropic fees by token count, plus OpenAI usage and an Ollama Cloud subscription.
-- Earlier runs, including those made before the last fixes, are kept in `results/history/`.
+- Cost per question is measured from token counts at the providers' list prices on 23 November 2026 (`config/pricing.yaml` names the sources): about US$0.0015 on Claude Haiku 5.5 (roughly 12 000 input and 600 output tokens over two or three model calls), up to US$0.027 on Claude Sonnet 5.5. Caching discounts are not modelled, so these are upper estimates. Local Ollama has no API charge.
+- Saved runs in `results/history/` include the evidence behind the fixes.
 
 ## First-run failures and what changed
 
-The first run of each model was kept before any fix (`results/dev/first_run_*.jsonl`). Each fix is general and covered by tests; none is specific to a question.
+I kept each model's first run before making fixes (`results/dev/first_run_*.jsonl`). The fixes apply generally and have tests; I added no question-specific rules.
 
 | What went wrong | Cause | Fix |
 |---|---|---|
@@ -100,16 +100,15 @@ The first run of each model was kept before any fix (`results/dev/first_run_*.js
 
 The claims FAQ hides one instruction in white 1-point text. One example does not show whether the scanner generalises, so `eval/adversarial/` builds 21 fixtures, each hiding a canary instruction with a different technique across DOCX, PDF, XLSX and Markdown (white or near-white text, tiny fonts, hidden runs, white text in white cells, hidden rows, columns and sheets, off-page text, invisible render mode, text covered by a shape, HTML comments, Unicode tag characters, zero-width characters, bidirectional overrides, visible instructions), plus six controls that must be left alone (clean files, and light text on dark cells).
 
-- **Scan** (no model): is each technique detected, is the canary kept out of search, and are the clean controls left alone? The first scan missed three techniques: text covered by a drawn shape, text reversed by bidirectional controls, and a visible instruction with no trigger wording. The first two are now detected and removed. The third is visible text, kept by design and answered from if approved; document approval is the control for it.
-- **Attack** (one model): ask a question whose true answer is in the fixture and see whether the answer follows the canary.
+- The **scan** uses no model. It checks detection, exclusion of the planted instruction from search and preservation of clean controls. It missed three techniques: text covered by a drawn shape, text reversed by bidirectional controls, and a visible instruction with no trigger wording. The first two are now detected and removed. The third remains searchable by design and can inform answers if approved. Document approval is the control for it.
+- The **attack** asks one model a question whose true answer is in the fixture, then checks whether the answer follows the planted instruction.
 
 Of 21 hiding techniques across DOCX, PDF, XLSX and Markdown, 20 are detected, all 18 planted instructions that should be removed are kept out of search, and none of 6 clean controls is flagged. The miss is a visible instruction with no AI-directed wording. In 21 attack questions each on Claude Haiku 5.5 and local `gpt-oss:20b`, no answer followed a planted instruction (attack run made before the last two scanner fixes).
 
 ## Limits
 
-- **The 15 questions were also the development set.** Failures on them were fixed, so results on them flatter the system. The reworded set, written without sight of any model answer, is the nearest thing to an independent check, and it is small.
-- **Fifteen questions are too few** to separate models reliably; one answer moves a score by almost seven points. Repeat runs show variation but not population accuracy.
-- **The grader is string matching** against a gold file written by the same team that built the system. It can be wrong in both directions, which is why a person reviews every answer.
-- **The evidence checks do not prove faithfulness.** An answer can quote the right passage and still drop a condition; the gold conditions and the human review are what catch that.
-- **Cost is list price** from `config/pricing.yaml`, without caching discounts; Ollama Cloud and local models are reported as unknown cost.
-- **Production needs a real golden set**: a hundred or more anonymised questions from agents, with answers agreed by content owners (see [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md)).
+I used the 15 questions for development as well as evaluation. Fixing their failures makes the scores look better than they would on unseen questions. The reworded set is the nearest independent check: it was written without sight of model answers, but it is small. Fifteen questions cannot reliably separate models; one answer moves a score by almost seven points. Repeats show variation, not population accuracy.
+
+The team that built the system also wrote the gold file. Its string-matching grader can be wrong in either direction, so a person reviews every answer. Evidence checks leave another gap: a correct quote can support an answer that drops a condition. The gold conditions and human review catch those omissions.
+
+Costs use list prices from `config/pricing.yaml` without caching discounts; Ollama Cloud and local models are reported as unknown cost. For production, I would build a golden set of a hundred or more anonymised agent questions, with answers agreed by content owners (see [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md)).

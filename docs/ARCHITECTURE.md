@@ -1,24 +1,24 @@
 # Kestrel Assistant: architecture
 
-This document describes the system as built. The plan it was built from is [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md); how it would run in production is [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
+The implementation is described here, with its design in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) and the proposed production setup in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
 
 ## 1. Goals
 
-The brief asks for a prototype that ingests six documents in three formats, answers only from them, cites document and section, declines when the documents are silent, runs locally, and comes with an honest evaluation and a production story.
+The brief requires local ingestion of six documents in three formats, answers drawn only from those documents, section-level citations and declines when the documents are silent. It also asks for an honest evaluation and a production design.
 
-The system meets that with one extra idea: **the assistant is a small governed platform, and Kestrel product Q&A is its first bot.** A second bot is a new folder of configuration and documents, not new code. The repository ships a working second bot, `staff-policies`, to show it.
+I designed the core to support more than Kestrel product questions. A new bot needs a folder of configuration and documents. The working `staff-policies` bot demonstrates that reuse without changes to the core.
 
 Design goals, in priority order:
 
-1. **Runs from a few commands** on a laptop: no Docker, no services, one `.env`.
-2. **Answers a call-centre agent can read out**, each claim backed by a quote that the application has checked against the source.
-3. **The model is not trusted.** Documents are not trusted either. Both are checked by deterministic code.
-4. **Privacy by default** (POPIA): personal information is removed from the question before any model, tool, log or store sees it, and a bot's data classification limits where text may be sent.
-5. **Bots are configuration.** Knowledge, prompt, tools, MCP servers, skills, model policy and privacy policy are declared per bot.
-6. **Provider-neutral.** Local Ollama, Ollama Cloud, Anthropic and OpenAI are selected by one setting.
-7. **Small enough to change live.** One service entry point; every front end is a thin adapter.
+1. Run on a laptop with a few commands: no Docker, no services, one `.env`.
+2. Give agents answers they can read to callers, with a source quote checked by the application for each claim.
+3. Check models and documents with deterministic code.
+4. Remove personal information before any model, tool, log or store receives the question, and limit destinations by the bot's data classification (POPIA).
+5. Declare knowledge, prompt, tools, MCP servers, skills, model policy and privacy policy per bot.
+6. Select local Ollama, Ollama Cloud, Anthropic or OpenAI through one setting.
+7. Keep changes manageable during a live demonstration: one service entry point with thin front-end adapters.
 
-Out of scope for the prototype: authentication, multi-user concurrency at scale, Postgres, a vector server, OCR. These are covered in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
+Authentication, multi-user concurrency at scale, Postgres, a vector server and OCR are outside the local implementation's scope. They are covered in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
 
 ## 2. Shape of the system
 
@@ -156,29 +156,37 @@ examples:                                      # up to six, shown as buttons in 
   - What is the maximum group life cover per member?
 ```
 
-What this buys:
+The configuration controls both access and behaviour:
 
-- **Isolation.** A collection id is stamped on every document, chunk and vector. Search always filters by the bot's collections in SQL, before ranking. A bot cannot retrieve another bot's documents, and `tests/test_isolation.py` proves it.
-- **Least privilege.** A bot gets only the tools, MCP servers and skills it names. MCP servers are defined once in `config/mcp_servers.yaml` (command or URL, allowed tool names, whether it runs on-device or externally, and a reviewer's statement that the listed tools only read). A server is approved centrally and bots opt in by name. An allow-list limits which tools can be called; it cannot make a tool harmless, which is why approval is a human step. Every argument sent to an MCP tool passes the privacy screen first, and the result is wrapped as untrusted data, exactly like a document excerpt.
-- **Skills.** Procedural know-how (how to read a banded table, how to handle two editions) lives in `SKILL.md` files loaded through DeepAgents' skills support with a read-only backend rooted at the bot's folder. The agent has no write, shell or sub-agent tools; tests assert both the tool inventory and that paths outside the skills folder cannot be read. The product bot ships two skills but has them **switched off**: measured on the test questions they changed no grade and added about a third more input tokens. The staff bot keeps its `leave-entitlement` skill.
-- **Per-bot policy.** A bot over internal policies can be `confidential` and therefore locked to on-device models, while the product bot uses a hosted model.
+A collection id is stamped on every document, chunk and vector. Search always filters by the bot's collections in SQL, before ranking. A bot cannot retrieve another bot's documents, and `tests/test_isolation.py` proves it.
+
+A bot gets only the tools, MCP servers and skills it names. MCP servers are defined once in `config/mcp_servers.yaml` (command or URL, allowed tool names, whether it runs on-device or externally, and a reviewer's statement that the listed tools only read). A server is approved centrally and bots opt in by name. An allow-list limits which tools can be called; it cannot make a tool harmless, which is why approval is a human step. Every argument sent to an MCP tool passes the privacy screen first, and the result is wrapped as untrusted data, exactly like a document excerpt.
+
+Procedural know-how (how to read a banded table, how to handle two editions) lives in `SKILL.md` files loaded through DeepAgents' skills support with a read-only backend rooted at the bot's folder. The agent has no write, shell or sub-agent tools; tests assert both the tool inventory and that paths outside the skills folder cannot be read. The product bot ships two skills but has them **switched off**: measured on the test questions they changed no grade and added about a third more input tokens. The staff bot keeps its `leave-entitlement` skill.
+
+A bot over internal policies can be `confidential` and therefore locked to on-device models, while the product bot uses a hosted model.
 
 The repository ships two bots: `kestrel-products` (the assessed one) and `staff-policies`, a small demonstration bot over three clearly labelled fictitious policy documents. It is `confidential`, allows only local Ollama, blocks (rather than redacts) questions with personal details, keeps only a digest of each question in the audit log, and uses an on-device MCP server, `workday-calendar`, from `examples/mcp_servers/`. The 15-question evaluation uses only `kestrel-products` and only the supplied documents. [ADDING_A_BOT.md](ADDING_A_BOT.md) walks through the staff bot field by field.
 
 ## 4. Ingestion
 
-- **Parsers keep structure and rendering.** DOCX: heading tree from styles, numbered sections, tables, run formatting resolved through the style chain. PDF: page, headings, tables rebuilt cell by cell from positioned text. XLSX: every sheet, table regions found by layout, header row, cell addresses. Markdown: headings, pipe tables, HTML comments kept as hidden spans. Every text span keeps what is needed to judge visibility (colour, size, hidden flags, position, background).
-- **Scanner.** Text a reader could not see (too little contrast, tiny font, hidden runs, invisible render mode, off-page, covered by a shape drawn over it, Unicode tag characters, text reversed by bidirectional controls) is removed from searchable content and recorded as a finding. Contrast is judged against the resolved background, including table-cell shading, so white header text on a dark cell is kept while white text on a white page is not. Wording addressed to an AI assistant is flagged, in hidden and visible text. The rules are generic; none names a document.
-- **Citations.** Each section stores a human locator: `file > section 4.2 "heading"`, `file > page 3 > table`, `file > sheet "name", cells A4:E10, row 3`.
-- **Tables.** A table is stored whole as structured rows and also chunked row by row with its header, so a search hit can lead to the full table and a citation can name one row.
-- **Lifecycle in data, not in the prompt.** `manifest.yaml` binds each file's SHA-256 to a family, edition, effective date, what it supersedes and an approval. Ingest marks each document `current`, `superseded`, `pending` or `blocked`. Only `current` documents are searched by default. A changed file no longer matches its approved hash and drops to `pending`.
-- **Idempotent.** Re-running ingest changes nothing unless files or the manifest changed.
+DOCX parsing keeps the heading tree from styles, numbered sections and tables, and resolves run formatting through the style chain. PDF parsing records pages and headings and rebuilds tables cell by cell from positioned text. XLSX parsing covers every sheet, finds table regions by layout and keeps header rows and cell addresses. Markdown parsing keeps headings and pipe tables, with HTML comments retained as hidden spans. Every text span keeps what is needed to judge visibility (colour, size, hidden flags, position, background).
+
+The scanner removes text a reader could not see (too little contrast, tiny font, hidden runs, invisible render mode, off-page, covered by a shape drawn over it, Unicode tag characters, text reversed by bidirectional controls) from searchable content and records it as a finding. Contrast is judged against the resolved background, including table-cell shading, so white header text on a dark cell is kept while white text on a white page is not. Wording addressed to an AI assistant is flagged, in hidden and visible text. The rules are generic; none names a document.
+
+Each section stores a human-readable citation locator: `file > section 4.2 "heading"`, `file > page 3 > table`, `file > sheet "name", cells A4:E10, row 3`.
+
+A table is stored whole as structured rows and also chunked row by row with its header, so a search hit can lead to the full table and a citation can name one row.
+
+`manifest.yaml` records document status. It binds each file's SHA-256 to a family, edition, effective date, what it supersedes and an approval. Ingest marks each document `current`, `superseded`, `pending` or `blocked`. Only `current` documents are searched by default. A changed file no longer matches its approved hash and drops to `pending`.
+
+Re-running ingest changes nothing unless files or the manifest changed.
 
 ## 5. Retrieval
 
 Hybrid search inside one SQLite file: FTS5 (BM25) for exact terms such as "Option B" or amounts, and `sqlite-vec` cosine search over `bge-small-en-v1.5` embeddings computed on CPU with fastembed. Results are fused by reciprocal rank. Collection, status and edition filters are applied inside the SQL of both rankers, before ranking, by one eligibility function.
 
-Why this choice: zero extra services, all three front ends can read the file at once (WAL, one short-lived connection per operation), documents never leave the machine for indexing, and exact-term recall matters as much as meaning in rule documents. The vector index sits behind a `VectorIndex` protocol, so a managed search service replaces it without touching callers. If the vector extension cannot load, search falls back to keywords only and `kestrel doctor` says so.
+I chose this because exact terms matter as much as meaning in rule documents. It needs no extra services, documents stay on the machine for indexing, and all three front ends can read the file at once (WAL, one short-lived connection per operation). The vector index sits behind a `VectorIndex` protocol, so a managed search service replaces it without touching callers. If the vector extension cannot load, search falls back to keywords only and `kestrel doctor` says so.
 
 Superseded editions are invisible by default. A question that names one edition or one date ("under the 2025 guide", "as of 2025-06-01") *switches* the scope to the edition in force then; it never mixes two editions in one result set. A question that names two editions gets a request to ask about one at a time. A bare year that could be an event date or an edition gets a request to clarify, but only when some document family in the bot's collections has more than one approved edition; otherwise the year is ordinary content. Blocked and pending documents are never searchable, whatever the scope.
 
@@ -227,19 +235,17 @@ A `schema` check comes first: `answered` and `partial` need answer text and at l
 
 On failure the agent gets one repair turn with the specific issues. If it still fails, the bot's policy decides: `withhold` (the user sees "could not confirm against the sources", with the retrieved sections to read) or `warn`. Issues fixed by the repair stay in the report as warnings. The outcome is always shown and always audited, together with the steps taken (privacy gate, scope, each tool call, checks, repair).
 
-**What the checks do and do not prove.** They prove the evidence exists, is quoted exactly, comes from an approved current source, and that the arithmetic is right. They do not prove the sentence is a faithful reading of the quote: an answer can cite the right passage and still drop a condition, or pick the right table but argue from the wrong rule. Every front end therefore says "evidence checks passed", never "verified", and shows the quotes beside the answer. Faithfulness is measured in evaluation (section 10) and, in production, by sampled human review. Fully deterministic validation of free prose is out of scope.
-
-This gives readable answers with checkable evidence: the model writes the sentence, the application proves the quote and the numbers, and a person can confirm the reading at a glance.
+The checks establish that evidence exists, is quoted exactly, comes from an approved current source, and that the arithmetic is right. A sentence can still misread that evidence: it can drop a condition from the right passage or use the wrong rule from the right table. Every front end therefore says "evidence checks passed", never "verified", and shows the quotes beside the answer. Faithfulness is measured in evaluation (section 10) and, in production, by sampled human review. Fully deterministic validation of free prose is out of scope.
 
 ## 7. Privacy and security
 
 **Privacy gate, before anything else.** A question is normalised and screened for South African ID numbers (date and checksum validated), phone numbers, emails, labelled bank, card, policy and reference numbers, labelled names and dates of birth, plus patterns a bot adds under `privacy.extra_patterns`. Per bot policy the text is redacted or the request is blocked. The model, MCP tools, the audit log and the UI history receive only the screened text. If screening fails, the request fails closed.
 
-Pattern screening is best effort. It will miss an unlabelled name or a free-text description of someone's health, so it reduces exposure rather than guaranteeing none. That residual risk is why the audit log keeps only a digest of the question unless a bot opts in to storing the screened text with a retention period, and why production adds entity recognition and an in-region redactor. The gate screens what users type; source documents are assumed to be approved business content and are checked for hidden text, not for personal information.
+Pattern screening will miss an unlabelled name or a free-text description of someone's health. Some personal information will get through. That residual risk is why the audit log keeps only a digest of the question unless a bot opts in to storing the screened text with a retention period, and why production adds entity recognition and an in-region redactor. The gate screens what users type; source documents are assumed to be approved business content and are checked for hidden text, not for personal information.
 
 **Egress policy.** Every destination that could receive text is tagged `on-device` or `external`: model providers, MCP servers, and the Ollama endpoint (on-device only when its host is loopback). A `confidential` bot refuses any external destination; the check runs when the bot is loaded and again per request, before any text is sent. Base URLs and keys are passed explicitly, so provider environment variables cannot redirect traffic past the policy. Framework tracing to third-party services is switched off in code. The Streamlit app listens on localhost only.
 
-Keeping data on the device is one control, not POPIA compliance. Operator agreements, cross-border transfer safeguards, retention and deletion duties, and breach handling are organisational, and are set out condition by condition in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
+On-device processing addresses only part of POPIA. The organisation still needs operator agreements, cross-border transfer safeguards, retention and deletion processes, and breach handling. These are set out condition by condition in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
 
 **Purpose limits.** The assistant gives general product information. It refuses member-specific decisions (will this claim be paid, is this person covered) and says who to ask.
 
@@ -247,7 +253,7 @@ Keeping data on the device is one control, not POPIA compliance. Operator agreem
 
 **Audit.** One append-only, hash-chained table: bot, channel, principal, screened question or its digest, retrieved excerpts, citations, calculations, outcome and its reason, steps, model, tokens, cost, latency. Retention is per bot; pruning writes a checkpoint row that carries the chain forward. `kestrel audit verify` detects an edited or deleted row. This is limited tamper evidence: someone with write access to the file could rebuild the whole chain, so production anchors the chain head in a separate write-once store. `kestrel docs affected` lists every past answer that cited a document, which is what an operator needs after blocking one.
 
-**Access.** Every service call carries a `Principal` (user, roles, channel), and the role check applies to every method, not only `ask`: search, section lookup, document listing and audit reads are all scoped to bots the principal may use. Operator actions (ingest, block, unblock, audit verify and prune) also need the separate `operator` role, so no bot audience grants them. The MCP server does not expose operator actions at all. The prototype takes the principal from `KESTREL_USER` and `KESTREL_ROLES`; production maps it from single sign-on. The seam is real, the identity provider is not.
+**Access.** Every service call carries a `Principal` (user, roles, channel), and the role check applies to every method, not only `ask`: search, section lookup, document listing and audit reads are all scoped to bots the principal may use. Operator actions (ingest, block, unblock, audit verify and prune) also need the separate `operator` role, so no bot audience grants them. The MCP server does not expose operator actions at all. The local application takes the principal from `KESTREL_USER` and `KESTREL_ROLES`; production maps it from single sign-on. The role checks are implemented; single sign-on still needs to be connected.
 
 **Secrets.** Keys only in `.env`, never logged, `.env` ignored by git; `kestrel doctor` reports which keys are present without printing them.
 
@@ -270,7 +276,7 @@ The service API is synchronous. It runs the agent on an event loop it owns, so S
 
 ## 9. Seams for scale
 
-Each is a `Protocol` in `kestrel.contracts` with one local implementation:
+Each boundary has a `Protocol` in `kestrel.contracts` and one local implementation:
 
 | Seam | Prototype | Production direction |
 |---|---|---|

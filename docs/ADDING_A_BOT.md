@@ -1,6 +1,6 @@
 # Adding a bot
 
-A bot is a folder of configuration plus a folder of documents. No code changes are needed. This guide uses the demonstration bot `staff-policies` (three fictitious Kestrel Assurance staff policies) as the worked example.
+To add a bot, create its configuration and document folders. The core needs no code changes. Follow the supplied `staff-policies` bot here; its three Kestrel Assurance staff policies are fictitious.
 
 ```mermaid
 flowchart LR
@@ -21,11 +21,11 @@ bots/staff-policies/            bot.yaml, prompt.md, manifest.yaml, skills/, eva
 data/source/staff-policies/     the documents (DOCX, PDF, XLSX or Markdown)
 ```
 
-The bot id, the folder name and the `id:` field must be the same: lower-case words joined by hyphens.
+Use the same lower-case, hyphenated name for the bot id, folder and `id:` field.
 
 ## 2. Drop in the documents
 
-Put the files in `data/source/<collection>/`. Headings and numbered sections become the citation locators (`section 2 "Annual leave", table 1`), so documents with clear headings give clearer citations. Tables are kept whole and also row by row, which is what lets the assistant cite the one row it relied on.
+Put files in `data/source/<collection>/`. Headings and numbered sections supply citation locations, such as `section 2 "Annual leave", table 1`, so use clear headings. Tables are stored whole and by row; the assistant can then cite the row it used.
 
 ## 3. Write `bot.yaml`
 
@@ -49,11 +49,11 @@ Put the files in `data/source/<collection>/`. Headings and numbered sections bec
 | `verification.on_failure` | `withhold` hides an answer that fails the evidence checks; `warn` shows it with a warning | `withhold` |
 | `evaluation.gold` | Gold answers for `eval.run_eval` | `eval/gold.yaml` |
 
-Unknown fields are rejected with the field name, so a typo fails loudly. (There is no `examples:` field.)
+An unknown field causes a load error naming that field, so a typo is visible immediately. (There is no `examples:` field.)
 
 ## 4. Approve the documents
 
-With `approval: required`, list each file in `manifest.yaml` with its SHA-256, a family, an edition and an effective date. A file whose bytes change no longer matches and drops to `pending` until someone re-approves it. Compute a hash with:
+When using `approval: required`, list each file in `manifest.yaml` with its SHA-256, family, edition and effective date. Any change to its bytes invalidates approval: it becomes `pending` until re-approved. Compute the hash with:
 
 ```
 uv run python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" data/source/staff-policies/KA_Staff_Leave_Policy.md
@@ -63,8 +63,9 @@ Use `approval: none` only for scratch or test bots: it skips the human approval 
 
 ## 5. Optional: skills and MCP servers
 
-- **Skill**: `bots/<id>/skills/<skill-name>/SKILL.md`, starting with front matter whose `name` equals the folder name and a one-line `description`. The staff bot's `leave-entitlement` skill explains how to pick the right band from the leave table. Skills are guidance, never evidence.
-- **MCP server**: a person first approves it in `config/mcp_servers.yaml` (command, allowed tools, `on-device` or `external`, and a read-only statement). The bot then opts in by name. A `confidential` bot refuses an `external` server.
+Write a skill in `bots/<id>/skills/<skill-name>/SKILL.md`. Its front matter needs a `name` matching the folder name and a one-line `description`. The staff bot's `leave-entitlement` skill explains how to select a leave-table band. A skill guides the agent; it cannot serve as evidence.
+
+Before a bot can use an MCP server, a person must approve it in `config/mcp_servers.yaml`, recording its command, allowed tools, `on-device` or `external` location and a read-only statement. The bot opts in by name. A `confidential` bot refuses an `external` server.
 
 ## 6. Ingest and ask
 
@@ -77,7 +78,7 @@ Ingest reports each file's status (`current`, `pending`, `blocked`) and any hidd
 
 ## 7. Evaluate
 
-Write `eval/gold.yaml` in the same format as the product bot's (expected status, facts, conditions, forbidden statements, expected source), then:
+Use the product bot's format to write `eval/gold.yaml`: expected status, facts, conditions, forbidden statements and expected source. Run it with:
 
 ```
 uv run python -m eval.run_eval --bot staff-policies --set reworded --gold bots/staff-policies/eval/gold.yaml --models ollama:gpt-oss:20b
