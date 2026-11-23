@@ -29,7 +29,7 @@ def test_usage_sums_ai_messages_only() -> None:
 def test_cost_from_repository_prices(repo_root: Path) -> None:
     usage = Usage(input_tokens=1_000_000, output_tokens=100_000)
     prices = load_prices(repo_root / "config")
-    assert prices is not None and prices.as_of == date(2026, 11, 3)
+    assert prices is not None and prices.as_of == date(2026, 11, 23)
     assert cost_usd("anthropic", "claude-sonnet-5-5", usage, prices=prices) == pytest.approx(2.0 + 1.0)
     assert cost_usd("anthropic", "claude-haiku-5-5", usage, config_dir=repo_root / "config") == pytest.approx(0.1 + 0.05)
 
@@ -37,8 +37,10 @@ def test_cost_from_repository_prices(repo_root: Path) -> None:
 def test_unknown_price_and_local_models_are_none_not_zero(repo_root: Path) -> None:
     usage = Usage(input_tokens=10, output_tokens=10)
     prices = load_prices(repo_root / "config")
-    assert cost_usd("openai", "gpt-6.1-sol", usage, prices=prices) is None
+    assert cost_usd("openai", "a-model-with-no-listed-price", usage, prices=prices) is None
     assert cost_usd("ollama-cloud", "gpt-oss:120b", usage, prices=prices) is None
+    assert cost_usd("openai", "gpt-6.1-sol", usage, prices=prices) == pytest.approx((10 * 2.0 + 10 * 10.0) / 1e6)
+    assert cost_usd("ollama-cloud", "gpt-oss:20b", usage, prices=prices) == pytest.approx((10 * 0.07 + 10 * 0.30) / 1e6, abs=1e-6)
     free_local = PriceTable(as_of=date(2026, 1, 1), prices={"ollama": {"gpt-oss:20b": Price(input=0, output=0)}})
     assert cost_usd("ollama", "gpt-oss:20b", usage, prices=free_local) is None
     assert cost_usd("anthropic", "claude-sonnet-5-5", usage, config_dir=Path("/nonexistent-folder")) is None
