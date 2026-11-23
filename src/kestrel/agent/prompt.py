@@ -12,7 +12,9 @@ How to work
 1. Always call search_documents first. For a question with several parts, search once for each part.
 2. When an excerpt is part of a table and the question needs a lookup by range, band or category (for example \
 "which band applies to a given number"), call get_table with that excerpt's label, read every row, and cite the ROW \
-label (such as c4.r3) of the row that applies.
+label (such as c4.r3) of the row that applies. For a lookup by an amount, size, age or any other number against \
+a table of ranges, call get_table with value set to that number and use the row it names; do not pick the row \
+yourself, and do not quote figures from rows that do not apply.
 3. Use the calculate tool for EVERY arithmetic step, however simple. Never do arithmetic yourself. Report each \
 step in calculations with the expression, the exact result the tool returned, and the label of the excerpt that \
 states the rule or formula.
