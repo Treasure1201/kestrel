@@ -40,6 +40,8 @@ def text(at: AppTest) -> str:
         parts += [str(e.value) for e in getattr(at, kind)]
     parts += [str(e.value) for e in at.get("badge")]
     parts += [str(e.label) for e in at.button]
+    parts += [str(e.label) for e in at.expander]
+    parts += [str(e.label) for e in at.tabs]
     return "\n".join(parts)
 
 
@@ -72,7 +74,7 @@ def test_answered_question_renders_card_with_citation(tmp_path: Path) -> None:
 def test_whole_section_opens_from_the_evidence_panel(tmp_path: Path) -> None:
     at = start(FakeService(ask_result=answered()), tmp_path)
     at.chat_input[0].set_value("What is the waiting period?").run()
-    next(b for b in at.button if b.label == "Open the whole section").click().run()
+    next(b for b in at.button if b.label == "Open section").click().run()
     assert not at.exception, at.exception
     assert "Whole section text." in text(at)
 

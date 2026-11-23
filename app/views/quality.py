@@ -9,8 +9,8 @@ from kestrel.contracts import OPERATOR_ROLE, AssistantService, AuditRecord, BotS
 from kestrel_app import eval_view, metrics, runtime
 from kestrel_app.components import fmt_cost, fmt_latency, fmt_share, plural, section_label
 
+# Audit records read for the live usage tab (the most recent ones): the most the service returns at once.
 USAGE_LIMIT = 500
-"""Audit records read for the live usage tab (the most recent ones): the most the service returns at once."""
 
 
 def _tail(svc: AssistantService, who: Principal, bot_id: str | None, limit: int) -> list[AuditRecord]:
@@ -19,7 +19,7 @@ def _tail(svc: AssistantService, who: Principal, bot_id: str | None, limit: int)
 
 
 def _card(column: st.delta_generator.DeltaGenerator, label: str, value: str, caption: str) -> None:
-    with column.container(border=True):
+    with column.container(border=True, key=f"mcard-usage-{label}", height="stretch"):
         st.metric(label, value)
         st.caption(caption)
 

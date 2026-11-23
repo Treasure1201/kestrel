@@ -1,134 +1,173 @@
-"""The evidence panel beside the chat: citations, how the answer was produced, uncited excerpts."""
+"""The evidence pane beside the chat: a compact header, then Sources, How it was answered, Checks and Other passages."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from kestrel.contracts import AskResult, Evidence, Outcome, ResolvedCitation
+from kestrel.contracts import AskResult, CheckIssue, Evidence, Outcome
 
-from kestrel_app import runtime
+from kestrel_app import sources
 from kestrel_app.components import (
     ATTESTATION,
     CHECK_LABELS,
     checks_passed_text,
+    esc,
+    evidence_badge,
     failed_checks,
-    md,
+    html_text,
+    issue_line,
+    outcome_badge,
     plural,
     quote,
     repaired_line,
-    section_label,
-    status_badge,
 )
 
+KIND_WORD: dict[str, str] = {
+    "privacy": "Privacy",
+    "scope": "Scope",
+    "search": "Search",
+    "table": "Table read",
+    "calculate": "Calculation",
+    "mcp_tool": "Tool call",
+    "checks": "Checks",
+    "repair": "Repair",
+}
 
-def answer_steps(result: AskResult) -> list[str]:
-    """'How this was answered': the steps the service recorded, in order, then the outcome and the audit record."""
-    steps = [f"{step.label}: {step.detail}" if step.detail else step.label for step in result.steps]
+CHECK_EXPLAIN: dict[str, str] = {
+    "schema": "The model's reply was not in the required answer format.",
+    "label_retrieved": "A citation points at an excerpt that was not retrieved for this question.",
+    "quote_verbatim": "A quote could not be found word for word in the excerpt it cites.",
+    "table_row_cited": "A fact from a table cites the whole table instead of the row it comes from.",
+    "numbers_grounded": "A number in the answer does not appear in any cited source.",
+    "calculation_recomputed": "The application recomputed a calculation and got a different result.",
+    "decline_reason": "The answer declined without saying why.",
+    "source_status": "A cited source is not approved, not current, or outside this assistant's documents.",
+}
+"""What each evidence check looks for, in plain English."""
+
+Step = tuple[str, str, str]
+"""(kind word, label, detail) for one row of the timeline."""
+
+
+def timeline(result: AskResult) -> list[Step]:
+    """'How it was answered': the recorded steps in order, then the model calls, the outcome and the audit record."""
+    steps: list[Step] = [(KIND_WORD.get(s.kind, s.kind), s.label, s.detail) for s in result.steps]
     if not steps:
-        steps.append("The request stopped before any step was taken")
+        steps.append(("Stopped", "The request stopped before any step was taken", ""))
     usage = result.usage
     if usage.model_calls:
         repairs = f", including {plural(usage.repairs, 'repair turn')}" if usage.repairs else ""
-        steps.append(f"Model: {plural(usage.model_calls, 'call')} to {result.model or 'the model'}{repairs}")
+        steps.append(("Model", f"{plural(usage.model_calls, 'call')} to {result.model or 'the model'}{repairs}", ""))
     if result.outcome == Outcome.WITHHELD:
-        steps.append(f"Answer withheld: {checks_passed_text(result.evidence_report)}")
+        steps.append(("Outcome", "Answer withheld", checks_passed_text(result.evidence_report)))
     if result.outcome == Outcome.ERROR:
         category = result.error_category.value.replace("_", " ") if result.error_category else "unknown"
-        steps.append(f"Request failed: {category}")
-    steps.append(f"Audit record written (trace {result.trace_id})")
+        steps.append(("Outcome", "Request failed", category))
+    steps.append(("Audit", "Audit record written", f"trace {result.trace_id}"))
     return steps
 
 
-def citation_check(result: AskResult, citation: ResolvedCitation) -> tuple[str, str] | None:
-    """A short check result for one citation, with a colour; None when checks did not run."""
-    report = result.evidence_report
-    if report is None:
-        return None
-    issues = [i for i in failed_checks(report) if i.label == citation.label]
-    if issues:
-        return f"check failed: {CHECK_LABELS.get(issues[0].check, issues[0].check).lower()}", "red"
-    return "quote matched", "blue"
+def answer_steps(result: AskResult) -> list[str]:
+    """The timeline as plain lines, `label: detail`."""
+    return [f"{label}: {detail}" if detail else label for _, label, detail in timeline(result)]
 
 
 def uncited(result: AskResult) -> list[Evidence]:
     """Excerpts the model was shown but the answer did not cite."""
     labels = {c.label for c in result.citations}
     bases = {label.split(".")[0] for label in labels}
-    return [
-        e for e in result.retrieved if e.label not in labels and not (e.row is None and e.label in bases)
-    ]
+    return [e for e in result.retrieved if e.label not in labels and not (e.row is None and e.label in bases)]
 
 
-@st.dialog("Whole section", width="large")
-def section_dialog(bot_id: str, section_id: str) -> None:
-    """Show one whole section, fetched through the service."""
-    svc = runtime.attempt(runtime.service)
-    if svc is None:
+def _header(result: AskResult) -> None:
+    st.markdown(
+        f'<div class="k-evhead"><div class="k-lbl">Evidence for</div>'
+        f'<div class="k-evq" title="{esc(result.question)}">{html_text(result.question)}</div></div>',
+        unsafe_allow_html=True,
+    )
+    with st.container(horizontal=True, vertical_alignment="center", gap="xsmall"):
+        outcome_badge(result.outcome)
+        evidence_badge(result)
+
+
+def _steps_tab(result: AskResult) -> None:
+    items = []
+    for kind, label, detail in timeline(result):
+        tone = " k-bad" if kind in {"Outcome", "Stopped"} or label.startswith("Tool call failed") else ""
+        detail_html = f'<div class="k-detail">{html_text(detail)}</div>' if detail else ""
+        items.append(
+            f'<li class="{tone.strip()}"><div class="k-kind">{esc(kind)}</div>'
+            f'<div class="k-step">{html_text(label)}</div>{detail_html}</li>'
+        )
+    st.markdown(f'<ol class="k-tl">{"".join(items)}</ol>', unsafe_allow_html=True)
+
+
+def _issue_items(issues: list[CheckIssue], line: str) -> str:
+    out = []
+    for issue in issues:
+        text = issue_line(issue) if line == "failed" else repaired_line(issue)
+        explain = CHECK_EXPLAIN.get(issue.check, "")
+        head = "Failed" if line == "failed" else "Fixed during repair"
+        out.append(f"<li><b>{esc(head)}: {esc(CHECK_LABELS.get(issue.check, issue.check))}</b>"
+                   f"{html_text(text)}<div class='k-src-file'>{esc(explain)}</div></li>")
+    return f'<ul class="k-checklist">{"".join(out)}</ul>'
+
+
+def _checks_tab(result: AskResult) -> None:
+    report = result.evidence_report
+    if report is None:
+        st.markdown('<div class="k-empty"><b>Evidence checks were not run</b> for this request.</div>',
+                    unsafe_allow_html=True)
+    else:
+        verdict = "Passed" if report.passed else "Failed"
+        colour = "green" if report.passed else "red"
+        with st.container(horizontal=True, vertical_alignment="center", gap="xsmall"):
+            st.badge(f"Evidence checks {verdict.lower()}", color=colour,  # type: ignore[arg-type]
+                     icon=":material/check:" if report.passed else ":material/close:")
+            st.caption(checks_passed_text(report))
+        failures = failed_checks(report)
+        if failures:
+            st.markdown('<div class="k-lbl">Still failing</div>' + _issue_items(failures, "failed"), unsafe_allow_html=True)
+        fixed = list(report.fixed_in_repair)
+        if fixed:
+            st.markdown('<div class="k-lbl">Fixed during repair</div>' + _issue_items(fixed, "fixed"), unsafe_allow_html=True)
+        if report.warnings:
+            st.markdown('<div class="k-lbl">Warnings (not failures)</div>', unsafe_allow_html=True)
+            st.markdown("\n".join(f"- {esc(issue_line(w))}" for w in report.warnings))
+    st.markdown(f'<div class="k-note">{html_text(ATTESTATION)}</div>', unsafe_allow_html=True)
+
+
+def _others_tab(others: list[Evidence]) -> None:
+    if not others:
+        st.markdown('<div class="k-empty">Every passage retrieved for this question was cited.</div>', unsafe_allow_html=True)
         return
-    view = runtime.attempt(svc.get_section, bot_id, section_id, runtime.principal())
-    if view is None:
-        return
-    st.markdown(f"**{md(view.title)}**  \n{md(view.filename)}")
-    st.caption(f"{view.locator} · {view.edition or 'undated'} edition")
-    status_badge(view.status)
-    if view.table is not None:
-        rows = []
-        for row in view.table.rows:
-            names = list(view.table.header) or [f"col{i + 1}" for i in range(len(row.cells))]
-            rows.append({"row": row.row_number, **dict(zip(names, row.cells, strict=False))})
-        st.dataframe(rows, hide_index=True)
-    if view.text:
-        quote(view.text)
-
-
-def _citation(result: AskResult, citation: ResolvedCitation, index: int) -> None:
-    with st.container(border=True):
-        with st.container(horizontal=True, vertical_alignment="center"):
-            st.markdown(f"`{citation.label}`")
-            check = citation_check(result, citation)
-            if check is not None:
-                st.badge(check[0], color=check[1])  # type: ignore[arg-type]
-        if citation.is_tool:
-            st.markdown(f"**Tool result: {md(citation.tool_name or '')}** (not a document)")
-            args = f" · arguments {citation.tool_arguments}" if citation.tool_arguments else ""
-            st.caption(md(f"server {citation.tool_server}{args}"))
-            quote(citation.quote)
-            st.caption(f"Supports: {citation.supports}")
-            return
-        st.markdown(f"**{md(citation.filename)}**")
-        details = [citation.locator]
-        if citation.row_number is not None:
-            details.append(f"row {citation.row_number}")
-        details += [f"{citation.edition or 'undated'} edition", citation.status.value]
-        st.caption(" · ".join(details))
-        quote(citation.quote)
-        st.caption(f"Supports: {citation.supports}")
-        if st.button("Open the whole section", key=f"sec-{result.trace_id}-{index}", type="tertiary"):
-            section_dialog(result.bot_id, citation.section_id)
+    st.caption("Retrieved for this question but not cited by the answer.")
+    for evidence in others:
+        with st.expander(f"{evidence.label} · {evidence.hit.title}, {evidence.hit.locator}"):
+            quote(evidence.text)
 
 
 def render(result: AskResult | None) -> None:
-    """Draw the evidence panel for `result` (the selected answer)."""
-    st.subheader("Evidence for the selected answer")
+    """Draw the evidence pane for `result` (the selected answer)."""
     if result is None:
-        st.caption("Ask a question to see its evidence here: every quote, where it comes from and how it was checked.")
-        st.caption(ATTESTATION)
+        st.markdown('<div class="k-lbl">Evidence</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="k-empty"><b>Ask a question to see its evidence here:</b> every quote, where it comes from, '
+            "how the answer was produced and how it was checked.</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(f'<div class="k-note">{html_text(ATTESTATION)}</div>', unsafe_allow_html=True)
         return
-    if result.citations:
-        for index, citation in enumerate(result.citations):
-            _citation(result, citation, index)
-    else:
-        st.caption("This answer cites no sources.")
-    section_label("How this was answered")
-    st.markdown("\n".join(f"{n}. {md(step)}" for n, step in enumerate(answer_steps(result), start=1)))
-    fixed = result.evidence_report.fixed_in_repair if result.evidence_report else ()
-    if fixed:
-        section_label("Fixed during repair")
-        st.markdown("\n".join(f"- {md(repaired_line(issue))}" for issue in fixed))
+    _header(result)
     others = uncited(result)
-    if others:
-        section_label("Also retrieved, not cited")
-        for evidence in others:
-            st.caption(f"{evidence.label} · {evidence.hit.title}, {evidence.hit.locator}")
-    st.divider()
-    st.caption(ATTESTATION)
+    tab_sources, tab_steps, tab_checks, tab_others = st.tabs(
+        [f"Sources ({len(result.citations)})", "How it was answered", "Checks", f"Other passages ({len(others)})"]
+    )
+    with tab_sources:
+        sources.render(result)
+    with tab_steps:
+        _steps_tab(result)
+    with tab_checks:
+        _checks_tab(result)
+    with tab_others:
+        _others_tab(others)

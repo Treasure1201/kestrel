@@ -32,5 +32,5 @@ PAGES = [
 
 navigation = st.navigation(PAGES, position="hidden")
 service = runtime.attempt(runtime.service)
-st.session_state["_bot"] = sidebar.render(service, PAGES)
+st.session_state["_bot"] = sidebar.render(service, PAGES, navigation)
 navigation.run()

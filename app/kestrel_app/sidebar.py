@@ -12,7 +12,7 @@ import yaml
 from kestrel.contracts import AssistantService, BotSummary, Principal
 
 from kestrel_app import runtime
-from kestrel_app.components import chips, model_locality, plural, section_label
+from kestrel_app.components import chips, esc, model_locality, plural, section_label
 
 APP_NAME = "Kestrel Assistant"
 
@@ -69,24 +69,31 @@ def _audit_status(svc: AssistantService, who: Principal) -> None:
         return
     st.session_state.setdefault(stamp_key, datetime.now().strftime("%H:%M"))
     if result.ok:
-        st.badge("Chain intact", color="blue", icon=":material/link:")
+        st.badge("Chain intact", color="green", icon=":material/link:")
     else:
         where = f" at record {result.first_broken_id}" if result.first_broken_id is not None else ""
         st.badge(f"Chain broken{where}", color="red", icon=":material/link_off:")
     st.caption(f"{plural(result.checked, 'record')} checked · {st.session_state[stamp_key]}")
 
 
-def render(svc: AssistantService | None, pages: Sequence[st.Page]) -> BotSummary | None:
+def render(svc: AssistantService | None, pages: Sequence[st.Page], current: st.Page | None = None) -> BotSummary | None:
     """Draw the sidebar and return the selected bot (None when there is none)."""
     who = runtime.principal()
     with st.sidebar:
-        st.markdown(f"### :material/visibility: {APP_NAME}")
+        st.markdown(
+            f'<div class="k-brand"><span class="k-brand-mark" aria-hidden="true">{esc(APP_NAME[:1])}</span>'
+            f'<span class="k-brand-name">{esc(APP_NAME)}</span></div>',
+            unsafe_allow_html=True,
+        )
         bot: BotSummary | None = None
         if svc is not None:
             bots = runtime.attempt(runtime.memo, "bots", lambda: svc.list_bots(who), default=[], where=st.sidebar) or []
             bot = _bot_picker(svc, who, bots)
-        for page in pages:
-            st.page_link(page)
+        section_label("Pages")
+        for n, page in enumerate(pages):
+            active = current is not None and page.url_path == current.url_path
+            with st.container(key="nav-active" if active else f"nav-{n}"):
+                st.page_link(page)
         st.divider()
         if bot is not None:
             model = active_model(bot)
