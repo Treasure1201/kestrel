@@ -108,7 +108,7 @@ Options on Azure, AWS and Google Cloud, and a POPIA mapping: [docs/PRODUCTION_AR
 
 ## Cost per question
 
-About **US$0.0015** on the default model: roughly 12 000 input and 600 output tokens over two or three model calls, at list prices on 23 November 2026 (`config/pricing.yaml` names the sources). The results table has the figure for each model.
+About **US$0.0015** on the default model: roughly 12 000 input and 600 output tokens over two or three model calls, at list prices on 23 November 2026 (`config/pricing.yaml` names the sources). The results table has the figure for each model. The whole assessment cost about US$10 in API fees across Anthropic, OpenAI and Ollama Cloud: US$8.80 for the evaluation runs saved under `results/`, and the rest for runs made while fixing problems.
 
 ## Beyond the brief
 
