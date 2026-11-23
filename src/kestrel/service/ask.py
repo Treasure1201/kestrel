@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -86,11 +87,17 @@ def screen_question(runtime: Runtime, text: str, policy: PrivacyPolicy) -> Scree
 
 
 def _row_locator(locator: str, row: TableRowView | None) -> str:
-    """Name the row in a table citation, so a reader can find the exact line relied on."""
-    if row is None or f"row {row.row_number}" in locator:
+    """Name the row in a table citation, so a reader can find the exact line relied on.
+
+    The hit behind a row label may itself be a different row of the same table, so any row
+    already named in the hit's locator is replaced, not added to.
+    """
+    if row is None:
         return locator
-    cells = f" (cells {row.address})" if row.address else ""
-    return f"{locator}, row {row.row_number}{cells}"
+    table = re.sub(r",\s*row\s+\d+(\s*\([^)]*\))?\s*$", "", locator)
+    address = row.address or ""
+    cells = f" (cells {address})" if address and not address.lower().startswith("row") else ""
+    return f"{table}, row {row.row_number}{cells}"
 
 
 def _resolve(answered: Answered) -> tuple[ResolvedCitation, ...]:

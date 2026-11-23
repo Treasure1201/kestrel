@@ -1,0 +1,187 @@
+# Human review. For every question, set `assessment` to exactly one of:
+#   Correct | Partially correct | Incorrect | Correctly declined | Incorrectly declined
+# and add a short `comment` (why it failed / what was changed).
+# `auto_grade` is an automatic string-matching check against the gold file. It is a
+# screening signal, not an assessment: read the answer and its quotes and decide.
+# Then run:  uv run python -m eval.finalise results/20261123T050129Z_anthropic-claude-haiku-5-5
+run_folder: 20261123T050129Z_anthropic-claude-haiku-5-5
+model: anthropic:claude-haiku-5-5
+run: 1
+questions:
+- id: Q101
+  question: What is the highest amount of group life cover any single member can be insured for?
+  outcome: answered
+  answer: The maximum lump sum group life cover for any one member is R25 000 000, regardless of salary
+    or multiple.
+  sources:
+  - KA_Group_Life_Product_Guide_2026.docx, section 2.2 "Maximum cover"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q102
+  question: How soon after a member dies does Kestrel have to be told about the death?
+  outcome: answered
+  answer: 'A member''s death must be notified to Kestrel within 6 months of the date of death. Claims
+    notified later may be declined. This is the rule in the Group Life Product Guide (2026 edition) for
+    group life cover. The Claims FAQ lists the documents needed for a death claim.
+
+
+    Caveats: The excerpts do not say whether the 6-month rule applies to funeral cover or group disability
+    income; the rule shown is from the group life guide.'
+  sources:
+  - KA_Group_Life_Product_Guide_2026.docx, section 5 "Claims"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q103
+  question: Does the 6-month waiting period on extended family funeral cover apply if the death is accidental?
+  outcome: answered
+  answer: 'No. The 6-month waiting period for extended family members applies only to death from natural
+    causes. If the death is accidental, the extended family member is covered immediately.
+
+
+    Caveats: The documents do not say whether any other conditions apply to accidental-death claims; the
+    claims team decides individual cases.'
+  sources:
+  - KA_Funeral_Benefit_Rules_2026.docx, section 4 "Waiting periods"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q104
+  question: Under the 2025 edition of the group life product guide, what was the maximum lump sum cover
+    per member?
+  outcome: answered
+  answer: Under the 2025 edition of the Group Life Product Guide, the maximum lump sum cover per member
+    is R20 000 000, regardless of salary or multiple. Note that this edition is marked as superseded.
+  sources:
+  - KA_Group_Life_Product_Guide_2025.docx, section 2.2 "Maximum cover"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q105
+  question: For a scheme with 75 members, what are the group life and the disability income free cover
+    limits?
+  outcome: answered
+  answer: 'For a scheme with 75 members (band 2, 50 to 99 members), the group life free cover limit is
+    R 2 000 000 and the disability income free cover limit is R 40 000 per month. These limits are set
+    at scheme inception and reviewed at each annual review date based on the number of members at that
+    date. Cover above these limits requires medical evidence and is subject to underwriting acceptance.
+
+
+    Caveats: The limits come from the 2026 edition of the free cover limits table; no other edition was
+    shown.'
+  sources:
+  - KA_Free_Cover_Limits_2026.xlsx, sheet "Free Cover Limits 2026", cells A4:E10, row 2 (cells A6:E6)
+  - KA_Free_Cover_Limits_2026.xlsx, sheet "Free Cover Limits 2026", cells A13:A16
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q106
+  question: Does Kestrel group life cover pay out if a member dies by suicide?
+  outcome: not_found
+  answer: 'The documents do not say whether Kestrel group life cover pays out when a member dies by suicide.
+    The group life exclusions section only lists deaths from war, civil commotion or riot, and nuclear,
+    biological or chemical events as excluded. For this question, please ask the claims team, who decide
+    individual claims.
+
+
+    Declined: The documents do not state how suicide is treated under group life cover. The claims team
+    decides individual claims and can confirm this for a specific case.
+
+
+    Caveats: Searches for suicide, self-inflicted death and self-harm returned no excerpt on this topic.'
+  sources:
+  - KA_Group_Life_Product_Guide_2026.docx, section 7 "Exclusions"
+  - KA_Group_Life_Product_Guide_2026.docx, section 1 "Overview"
+  - KA_Group_Life_Product_Guide_2026.docx, section 5 "Claims"
+  auto_grade: correctly_declined
+  auto_reasons: 'Auto-grade: correctly declined (automatic check against the gold file, not a human assessment).'
+  assessment: ''
+  comment: ''
+- id: Q107
+  question: A member on disability Option C earned R80 000 a month. What monthly benefit would they get?
+  outcome: answered
+  answer: 'Under Option C, the monthly benefit is 100% of the first R20 000 of monthly salary plus 75%
+    of the balance, capped at a maximum monthly benefit of R300 000. On a monthly salary of R80 000 this
+    works out to R65 000 a month (R20 000 + 75% of R60 000). This is an illustration of the general rule,
+    and the claims team decides individual cases.
+
+
+    Caveats: The documents define salary as monthly pensionable salary at the date disability started;
+    the R80 000 figure is treated as that salary. Benefit for a real member depends on their case, which
+    the claims team decides.'
+  sources:
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 2 "Benefit options", table 1, row 3
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 2 "Benefit options", part 2
+  auto_grade: incorrect
+  auto_reasons: 'Auto-grade: incorrect (automatic check against the gold file, not a human assessment).
+    Forbidden: 75% of the whole salary. Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q108
+  question: What paperwork has to be sent in for a death claim?
+  outcome: answered
+  answer: 'For a death claim, send in: the completed Kestrel death claim form, a certified copy of the
+    death certificate, a certified copy of the deceased member''s ID document, and a certified copy of
+    each beneficiary''s ID document plus a bank confirmation letter. The claim can be submitted by the
+    employer or broker through the Kestrel Broker Portal or by email to claims@kestrel-assurance.example.
+    The death must be notified to Kestrel within 6 months of the date of death, or the claim may be declined.
+
+
+    Caveats: The documents do not say whether the 6-month notification limit applies to funeral cover
+    as well as group life; the Group Life guide states it for member deaths.'
+  sources:
+  - KA_Claims_FAQ.docx, section "What documents are needed for a death claim?"
+  - KA_Claims_FAQ.docx, section "How do I submit a claim?"
+  - KA_Group_Life_Product_Guide_2026.docx, section 5 "Claims"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q109
+  question: When does a disability income benefit stop being paid?
+  outcome: answered
+  answer: 'The Kestrel group disability income benefit is paid monthly in arrears until the earliest of
+    three events: the member recovers, the member dies, or the member reaches age 65. Whichever of these
+    happens first ends the benefit.
+
+
+    Caveats: The excerpts do not say how a benefit is handled if the member returns to work in a reduced
+    capacity beyond the partial disability rule; the claims team decides individual cases.'
+  sources:
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 3 "Payment term"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q110
+  question: How long does someone who leaves their employer have to apply to keep their life cover, and
+    do they need medical evidence?
+  outcome: answered
+  answer: 'A member who leaves the employer before normal retirement age can apply to continue their life
+    cover on an individual Kestrel policy within 60 days of leaving service. No medical evidence is needed
+    for this continuation option. Cover under this option is limited to the lower of the member''s group
+    cover and R5 000 000.
+
+
+    Caveats: The continuation rule applies to members who leave before normal retirement age. The documents
+    do not say whether a longer period applies in other cases.'
+  sources:
+  - KA_Group_Life_Product_Guide_2026.docx, section 4 "Continuation option"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''

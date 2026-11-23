@@ -1,0 +1,256 @@
+{
+  "bot": "kestrel-products",
+  "question_set": "test",
+  "search_limit": 10,
+  "created_at": "2026-11-23T05:02:21.879285+00:00",
+  "questions_with_target": 13,
+  "questions_without_target": 2,
+  "errors": 0,
+  "hits": {
+    "1": 13,
+    "3": 13,
+    "6": 13
+  },
+  "hit_at": {
+    "1": 1.0,
+    "3": 1.0,
+    "6": 1.0
+  },
+  "mrr": 1.0,
+  "per_question": [
+    {
+      "id": "Q1",
+      "question": "What is the maximum lump sum group life cover a member can have?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Life_Product_Guide_2026.docx",
+          "locator": "section 2.2 \"Maximum cover\""
+        }
+      ],
+      "top": [
+        "KA_Group_Life_Product_Guide_2026.docx > section 2.2 \"Maximum cover\"",
+        "KA_Group_Life_Product_Guide_2026.docx > section 1 \"Overview\"",
+        "KA_Group_Life_Product_Guide_2026.docx > section 3 \"Eligibility\""
+      ]
+    },
+    {
+      "id": "Q2",
+      "question": "A member is leaving their employer. How long do they have to take up the continuation option, and up to what amount of cover?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Life_Product_Guide_2026.docx",
+          "locator": "section 4 \"Continuation option\""
+        }
+      ],
+      "top": [
+        "KA_Group_Life_Product_Guide_2026.docx > section 4 \"Continuation option\"",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1, row 5",
+        "KA_Group_Life_Product_Guide_2026.docx > section 2.1 \"Level of cover\""
+      ]
+    },
+    {
+      "id": "Q3",
+      "question": "What is the group life free cover limit for a scheme with 320 members?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Free_Cover_Limits_2026.xlsx",
+          "locator": "sheet \"Free Cover Limits 2026\", cells A4:E10"
+        }
+      ],
+      "top": [
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10, row 3 (cells A7:E7)",
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10, row 1 (cells A5:E5)",
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10, row 4 (cells A8:E8)"
+      ]
+    },
+    {
+      "id": "Q4",
+      "question": "A scheme has 1 200 members. What is the disability income free cover limit?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Free_Cover_Limits_2026.xlsx",
+          "locator": "sheet \"Free Cover Limits 2026\", cells A4:E10"
+        }
+      ],
+      "top": [
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10, row 2 (cells A6:E6)",
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10",
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10, row 1 (cells A5:E5)"
+      ]
+    },
+    {
+      "id": "Q5",
+      "question": "What waiting period applies to disability income Option B?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Disability_Income_Guide_2026.pdf",
+          "locator": "section 2 \"Benefit options\", table 1"
+        }
+      ],
+      "top": [
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1, row 2",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1, row 1"
+      ]
+    },
+    {
+      "id": "Q6",
+      "question": "Under disability Option C, what monthly benefit would a member earning R50 000 a month receive?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Disability_Income_Guide_2026.pdf",
+          "locator": "section 2 \"Benefit options\", table 1"
+        }
+      ],
+      "top": [
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1, row 3",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1, row 1",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1"
+      ]
+    },
+    {
+      "id": "Q7",
+      "question": "Until what age is the disability income benefit paid?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Disability_Income_Guide_2026.pdf",
+          "locator": "section 3 \"Payment term\""
+        }
+      ],
+      "top": [
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 3 \"Payment term\"",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", part 2",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 1 \"Overview\""
+      ]
+    },
+    {
+      "id": "Q8",
+      "question": "How much funeral cover is provided for a member's 4-year-old child?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Funeral_Benefit_Rules_2026.docx",
+          "locator": "section 2 \"Cover amounts\""
+        }
+      ],
+      "top": [
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1, row 4",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1, row 3",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1"
+      ]
+    },
+    {
+      "id": "Q9",
+      "question": "Is there a waiting period on extended family funeral cover?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Funeral_Benefit_Rules_2026.docx",
+          "locator": "section 4 \"Waiting periods\""
+        }
+      ],
+      "top": [
+        "KA_Funeral_Benefit_Rules_2026.docx > section 4 \"Waiting periods\"",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 3 \"Extended family cover\"",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1, row 5"
+      ]
+    },
+    {
+      "id": "Q10",
+      "question": "How many extended family members can be added to funeral cover, and what is the maximum entry age?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Funeral_Benefit_Rules_2026.docx",
+          "locator": "section 3 \"Extended family cover\""
+        }
+      ],
+      "top": [
+        "KA_Funeral_Benefit_Rules_2026.docx > section 3 \"Extended family cover\"",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1, row 5",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1"
+      ]
+    },
+    {
+      "id": "Q11",
+      "question": "What documents are needed to submit a disability claim?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Claims_FAQ.docx",
+          "locator": "section \"What documents are needed for a disability claim?\""
+        }
+      ],
+      "top": [
+        "KA_Claims_FAQ.docx > section \"What documents are needed for a disability claim?\"",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 6 \"Claims\"",
+        "KA_Claims_FAQ.docx > section \"How long does it take to assess a claim?\""
+      ]
+    },
+    {
+      "id": "Q12",
+      "question": "Within what period must a member's death be notified to Kestrel?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Life_Product_Guide_2026.docx",
+          "locator": "section 5 \"Claims\""
+        }
+      ],
+      "top": [
+        "KA_Group_Life_Product_Guide_2026.docx > section 5 \"Claims\"",
+        "KA_Claims_FAQ.docx > section \"What documents are needed for a death claim?\"",
+        "KA_Group_Life_Product_Guide_2026.docx > section 4 \"Continuation option\""
+      ]
+    },
+    {
+      "id": "Q13",
+      "question": "Does Kestrel offer group dental cover?",
+      "has_target": false,
+      "rank": null
+    },
+    {
+      "id": "Q14",
+      "question": "What is the premium rate per R1 000 of life cover for a scheme with 150 members?",
+      "has_target": false,
+      "rank": null
+    },
+    {
+      "id": "Q15",
+      "question": "How long does Kestrel take to make a decision on a group life claim?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Claims_FAQ.docx",
+          "locator": "section \"How long does it take to assess a claim?\""
+        }
+      ],
+      "top": [
+        "KA_Claims_FAQ.docx > section \"How long does it take to assess a claim?\"",
+        "KA_Group_Life_Product_Guide_2026.docx > section 5 \"Claims\"",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 5 \"Claims payment\""
+      ]
+    }
+  ],
+  "note": "Questions the documents cannot answer have no target section and are not counted."
+}

@@ -1,0 +1,56 @@
+{
+  "grader_version": "1",
+  "models": [
+    "ollama-cloud:deepseek-v4.1-flash"
+  ],
+  "runs": [
+    1,
+    2,
+    3
+  ],
+  "questions": 15,
+  "records": 45,
+  "ungraded": 0,
+  "grades": {
+    "correct": 36,
+    "partially_correct": 0,
+    "incorrect": 3,
+    "correctly_declined": 6,
+    "incorrectly_declined": 0,
+    "withheld": 0,
+    "error": 0
+  },
+  "outcomes": {
+    "answered": 39,
+    "not_found": 6
+  },
+  "withheld": 0,
+  "errors": 0,
+  "retrieval_misses": 0,
+  "retrieval_miss_ids": [],
+  "latency_ms": {
+    "median": 4193.0,
+    "p95": 7140.0,
+    "max": 9801.0
+  },
+  "cost_usd": {
+    "total": null,
+    "per_question": null,
+    "unpriced_records": 45
+  },
+  "tokens": {
+    "input": 442885,
+    "output": 40774
+  },
+  "model_calls": 135,
+  "meta": {
+    "bot": "kestrel-products",
+    "question_set": "test",
+    "model": "ollama-cloud:deepseek-v4.1-flash",
+    "model_override": "ollama-cloud:deepseek-v4.1-flash",
+    "gold_file": "C:\\Users\\treas\\source\\kestrel\\bots\\kestrel-products\\eval\\gold.yaml",
+    "questions_file": "C:\\Users\\treas\\source\\kestrel\\eval\\KA_Test_Questions.xlsx",
+    "started_at": "2026-11-23T04:24:37.917426+00:00",
+    "finished_at": "2026-11-23T04:27:58.796452+00:00"
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "bot": "kestrel-products",
+  "question_set": "reworded",
+  "search_limit": 10,
+  "created_at": "2026-11-23T05:01:30.047206+00:00",
+  "questions_with_target": 9,
+  "questions_without_target": 1,
+  "errors": 0,
+  "hits": {
+    "1": 7,
+    "3": 8,
+    "6": 8
+  },
+  "hit_at": {
+    "1": 0.7777777777777778,
+    "3": 0.8888888888888888,
+    "6": 0.8888888888888888
+  },
+  "mrr": 0.8492063492063493,
+  "per_question": [
+    {
+      "id": "Q101",
+      "question": "What is the highest amount of group life cover any single member can be insured for?",
+      "has_target": true,
+      "rank": 7,
+      "expected": [
+        {
+          "document": "KA_Group_Life_Product_Guide_2026.docx",
+          "locator": "section 2.2 \"Maximum cover\""
+        }
+      ],
+      "top": [
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1, row 1",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1, row 5"
+      ]
+    },
+    {
+      "id": "Q102",
+      "question": "How soon after a member dies does Kestrel have to be told about the death?",
+      "has_target": true,
+      "rank": 2,
+      "expected": [
+        {
+          "document": "KA_Group_Life_Product_Guide_2026.docx",
+          "locator": "section 5 \"Claims\""
+        }
+      ],
+      "top": [
+        "KA_Funeral_Benefit_Rules_2026.docx > section 1 \"Purpose\"",
+        "KA_Group_Life_Product_Guide_2026.docx > section 5 \"Claims\"",
+        "KA_Claims_FAQ.docx > section \"What documents are needed for a death claim?\""
+      ]
+    },
+    {
+      "id": "Q103",
+      "question": "Does the 6-month waiting period on extended family funeral cover apply if the death is accidental?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Funeral_Benefit_Rules_2026.docx",
+          "locator": "section 4 \"Waiting periods\""
+        }
+      ],
+      "top": [
+        "KA_Funeral_Benefit_Rules_2026.docx > section 4 \"Waiting periods\"",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 2 \"Cover amounts\", table 1, row 5",
+        "KA_Funeral_Benefit_Rules_2026.docx > section 3 \"Extended family cover\""
+      ]
+    },
+    {
+      "id": "Q104",
+      "question": "Under the 2025 edition of the group life product guide, what was the maximum lump sum cover per member?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Life_Product_Guide_2025.docx",
+          "locator": "section 2.2 \"Maximum cover\""
+        }
+      ],
+      "top": [
+        "KA_Group_Life_Product_Guide_2025.docx > section 2.2 \"Maximum cover\"",
+        "KA_Group_Life_Product_Guide_2025.docx > section 1 \"Overview\"",
+        "KA_Group_Life_Product_Guide_2025.docx > section \"Group Life Assurance: Product Guide\""
+      ]
+    },
+    {
+      "id": "Q105",
+      "question": "For a scheme with 75 members, what are the group life and the disability income free cover limits?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Free_Cover_Limits_2026.xlsx",
+          "locator": "sheet \"Free Cover Limits 2026\", cells A4:E10"
+        }
+      ],
+      "top": [
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10, row 4 (cells A8:E8)",
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10, row 3 (cells A7:E7)",
+        "KA_Free_Cover_Limits_2026.xlsx > sheet \"Free Cover Limits 2026\", cells A4:E10"
+      ]
+    },
+    {
+      "id": "Q106",
+      "question": "Does Kestrel group life cover pay out if a member dies by suicide?",
+      "has_target": false,
+      "rank": null
+    },
+    {
+      "id": "Q107",
+      "question": "A member on disability Option C earned R80 000 a month. What monthly benefit would they get?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Disability_Income_Guide_2026.pdf",
+          "locator": "section 2 \"Benefit options\", table 1"
+        }
+      ],
+      "top": [
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1, row 3",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1, row 1",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", table 1"
+      ]
+    },
+    {
+      "id": "Q108",
+      "question": "What paperwork has to be sent in for a death claim?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Claims_FAQ.docx",
+          "locator": "section \"What documents are needed for a death claim?\""
+        }
+      ],
+      "top": [
+        "KA_Claims_FAQ.docx > section \"What documents are needed for a death claim?\"",
+        "KA_Group_Life_Product_Guide_2026.docx > section 5 \"Claims\"",
+        "KA_Claims_FAQ.docx > section \"How long does it take to assess a claim?\""
+      ]
+    },
+    {
+      "id": "Q109",
+      "question": "When does a disability income benefit stop being paid?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Disability_Income_Guide_2026.pdf",
+          "locator": "section 3 \"Payment term\""
+        }
+      ],
+      "top": [
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 3 \"Payment term\"",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 2 \"Benefit options\", part 2",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 1 \"Overview\""
+      ]
+    },
+    {
+      "id": "Q110",
+      "question": "How long does someone who leaves their employer have to apply to keep their life cover, and do they need medical evidence?",
+      "has_target": true,
+      "rank": 1,
+      "expected": [
+        {
+          "document": "KA_Group_Life_Product_Guide_2026.docx",
+          "locator": "section 4 \"Continuation option\""
+        }
+      ],
+      "top": [
+        "KA_Group_Life_Product_Guide_2026.docx > section 4 \"Continuation option\"",
+        "KA_Claims_FAQ.docx > section \"How long does it take to assess a claim?\"",
+        "KA_Group_Disability_Income_Guide_2026.pdf > page 1, section 5 \"Free cover and underwriting\""
+      ]
+    }
+  ],
+  "note": "Questions the documents cannot answer have no target section and are not counted."
+}

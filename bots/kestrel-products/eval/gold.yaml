@@ -130,7 +130,8 @@ questions:
     must_not_include:
       - label: the 3-month waiting period of Options A and C given for Option B
         any: ["3 month"]
-        unless_clause_has: ["option a", "option c", "options a", "a and c"]
+        # "3 months after the end of the waiting period" is the claim deadline, not a waiting period.
+        unless_clause_has: ["option a", "option c", "options a", "a and c", "after the end", "no later than", "submitted", "deadline"]
     sources:
       - document: KA_Group_Disability_Income_Guide_2026.pdf
         locator: section 2 "Benefit options", table 1

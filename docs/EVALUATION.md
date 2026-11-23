@@ -61,22 +61,24 @@ The automatic grade is a screening signal and is never copied into the workbook.
 
 ## Results
 
-Automatic grades on the 15 test questions (13 answerable, 2 not), from `results/report.md`:
+Three runs of the 15 test questions per model on the final code (13 answerable, 2 not, so 39 and 6 per model). Grades are automatic; I read every answer not graded correct.
 
-| Model | Runs | Correct | Correctly declined | Partial, incorrect, withheld or error | Cost per question | Median time |
+| Model | Correct | Correctly declined | Other | Needed a repair | Cost per question | Median time |
 |---|---|---|---|---|---|---|
-| Claude Haiku 5.5 (default) | 3 | 39 of 39 | 6 of 6 | 0 | US$0.0015 | 4.3 s |
-| Claude Sonnet 5.5 | 1 | 13 of 13 | 2 of 2 | 0 | US$0.029 | 5.9 s |
-| OpenAI `gpt-6.1-sol` | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 6.5 s |
-| Kimi `kimi-k3.1-pro` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 13.9 s |
-| DeepSeek `deepseek-v4.1-flash` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 4.4 s |
-| `gpt-oss:20b` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 6.4 s |
-| `gpt-oss:20b` (local Ollama) | 1 | 13 of 13 | 2 of 2 | 0 | no API charge | 3.5 s |
+| Claude Haiku 5.5 (default) | 39 of 39 | 6 of 6 | 0 | 1 | US$0.0015 | 3.9 s |
+| Claude Sonnet 5.5 | 39 of 39 | 6 of 6 | 0 | 3 | US$0.027 | 4.6 s |
+| OpenAI `gpt-6.1-sol` | 39 of 39 | 6 of 6 | 0 | 3 | not priced | 6.0 s |
+| Kimi `kimi-k3.1-pro` (Ollama Cloud) | 39 of 39 | 6 of 6 | 0 | 0 | not priced | 6.9 s |
+| `gpt-oss:20b` (Ollama Cloud) | 39 of 39 | 6 of 6 | 0 | 0 | not priced | 7.0 s |
+| `gpt-oss:20b` (local Ollama) | 39 of 39 | 6 of 6 | 0 | 0 | no API charge | 5.7 s |
+| DeepSeek `deepseek-v4.1-flash` (Ollama Cloud) | 37 of 39 | 6 of 6 | 1 partial, 1 graded incorrect | 1 | not priced | 2.7 s |
+| GLM `glm-5.3-flash` (Ollama Cloud) | 37 of 39 | 6 of 6 | 2 graded incorrect | 1 | not priced | 3.5 s |
 
-- Primary model on the 15 questions: Claude Haiku 5.5 answered all 13 answerable test questions correctly and declined the 2 unanswerable ones in each of three runs, at about US$0.0015 a question (automatic grades; my own assessment of each answer is in the workbook).
-- Reworded set (10 questions written without sight of any model answer): on Claude Haiku 5.5, 8 graded correct, 1 correctly declined and 1 graded incorrect. The "incorrect" one is a grader false alarm: the answer (R65 000) is right, but the gold file forbade the figure R60 000, which is also the legitimate balance in the sum. I left that gold file as written.
-- Retrieval without a model: the section an answer needs ranked first for 13 of 13 test questions. On the reworded set it ranked first for 7 of 9 and in the top six for 8 of 9; one paraphrase ("highest amount ... insured for") shares no words with "Maximum cover" and ranked seventh, though the agent still answered it by searching again.
-- Measured cost per question: US$0.0015 on Claude Haiku 5.5 (about 11 000 input and 600 output tokens) and US$0.029 on Claude Sonnet 5.5. The OpenAI and Ollama Cloud models have no price in the config, so their cost is reported as unknown rather than guessed.
+No answer was withheld or errored. DeepSeek's partial answer is a real miss: it dropped the condition "before normal retirement age". The three answers graded incorrect give the right figure but volunteer a neighbouring one the gold answers forbid (for example the disability limit beside the group life limit), so I do not recommend those two models. "Needed a repair" counts answers whose first draft failed an evidence check and was corrected. The submitted workbook is one further Haiku run on the final commit: 13 correct, 2 correctly declined, no repairs. All runs: [results/report.md](../results/report.md).
+
+- Reworded set (10 questions written without sight of any model answer), Claude Haiku 5.5: 8 graded correct, 1 correctly declined and 1 graded incorrect, which is a grader false alarm (the answer, R65 000, is right). Search alone ranked the needed section first for 13 of 13 test questions but only 7 of 9 reworded ones, so retrieval depends on wording more than the headline shows.
+- Measured from token counts at list prices in `config/pricing.yaml`: about US$0.0015 on Claude Haiku 5.5 (roughly 11 000 input and 600 output tokens over two or three model calls) and US$0.027 on Claude Sonnet 5.5. The other hosted models have no price in the config, so their cost is shown as unknown rather than guessed; local Ollama has no API charge. Building and evaluating this cost roughly US$6 in Anthropic fees by token count, plus OpenAI usage and an Ollama Cloud subscription.
+- Earlier runs, including those made before the last fixes, are kept in `results/history/`.
 
 ## First-run failures and what changed
 
@@ -91,6 +93,8 @@ The first run of each model was kept before any fix (`results/dev/first_run_*.js
 | Product-bot skills | Measured on the test questions: no grade changed and input tokens rose by about a third | Skills switched off for the product bot |
 | Staff bot dropped a correct working-day count from the calendar tool | The number checks accepted only document excerpts, so a correct figure from an approved tool was stripped | Approved tool results are labelled and citable; a rule still needs a document citation |
 | Independent code review (after the build) found ten defects, including: a number from a tool was enough to pass an invented rule; 0.015% passed against a source saying 0.01%; the quote "covered" matched "uncovered"; an ID number sent to a tool as an integer was not screened; provider error text could reach the log | Checks and screens written quickly were looser than the documents claimed | All ten fixed, each with a test that failed first: a document citation is always required, sourced numbers must match exactly, quotes must fall on word boundaries, tool arguments of every type are screened, and error text is redacted before logging |
+| Two questions passed only after a repair turn in every run, and were sometimes withheld | The model read a table of ranges by eye and started from the wrong band; caveats quoted figures from passages the answer did not cite | The table tool finds the row whose range contains the number; an unsupported caveat is removed and recorded instead of costing the repair turn; repairs per model are now reported |
+| Allowing two repair turns removed the withheld answers but let one self-contradictory answer through | A second repair let the model cite both the wrong and the right row | Kept at one repair turn: withholding is the safer failure |
 
 ## Adversarial evaluation
 

@@ -1,0 +1,263 @@
+# Human review. For every question, set `assessment` to exactly one of:
+#   Correct | Partially correct | Incorrect | Correctly declined | Incorrectly declined
+# and add a short `comment` (why it failed / what was changed).
+# `auto_grade` is an automatic string-matching check against the gold file. It is a
+# screening signal, not an assessment: read the answer and its quotes and decide.
+# Then run:  uv run python -m eval.finalise results/20261123T041507Z_anthropic-claude-sonnet-5-5
+run_folder: 20261123T041507Z_anthropic-claude-sonnet-5-5
+model: anthropic:claude-sonnet-5-5
+run: 1
+questions:
+- id: Q1
+  question: What is the maximum lump sum group life cover a member can have?
+  outcome: answered
+  answer: 'The most lump sum group life cover one member can have is R25 000 000, whatever their salary
+    or cover multiple. Cover above a scheme''s free cover limit is a separate matter (see caveats).
+
+
+    Caveats: The free cover limits table sets different amounts by scheme size, from R1 000 000 to R10
+    000 000. The documents shown do not say how cover above those limits is handled. Underwriting can
+    confirm that. This is the general product maximum, not a decision about any specific member''s cover.'
+  sources:
+  - KA_Group_Life_Product_Guide_2026.docx, section 2.2 "Maximum cover"
+  - KA_Group_Life_Product_Guide_2026.docx, section 2.1 "Level of cover"
+  - KA_Free_Cover_Limits_2026.xlsx, sheet "Free Cover Limits 2026", cells A4:E10, row 1 (cells A5:E5)
+  - KA_Free_Cover_Limits_2026.xlsx, sheet "Free Cover Limits 2026", cells A4:E10, row 6 (cells A10:E10)
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q2
+  question: A member is leaving their employer. How long do they have to take up the continuation option,
+    and up to what amount of cover?
+  outcome: answered
+  answer: 'The member has 60 days from leaving service to get their application to Kestrel. Cover can
+    be up to the lower of their group cover and R5 000 000. This applies to group life cover, and only
+    if they leave before normal retirement age. No medical evidence is needed.
+
+
+    Caveats: This is the general rule from the 2026 Group Life Product Guide. It does not decide any individual
+    member''s case.'
+  sources:
+  - KA_Group_Life_Product_Guide_2026.docx, section 4 "Continuation option"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q3
+  question: What is the group life free cover limit for a scheme with 320 members?
+  outcome: answered
+  answer: 'For a scheme with 320 members, the group life free cover limit is R5 000 000. This falls in
+    Band 4, which covers schemes with 250 to 499 members. This is the general rule from the 2026 table,
+    not a decision on any specific scheme.
+
+
+    Caveats: Figures come from the 2026 free cover limits table (current edition). Cover above the free
+    cover limit would be a matter for underwriting.'
+  sources:
+  - KA_Free_Cover_Limits_2026.xlsx, sheet "Free Cover Limits 2026", cells A4:E10, row 4 (cells A8:E8)
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q4
+  question: A scheme has 1 200 members. What is the disability income free cover limit?
+  outcome: answered
+  answer: 'For a scheme with 1 200 members, the disability income free cover limit is R120 000 per month.
+    This is band 6, which covers schemes with 1 000 members and above.
+
+
+    Caveats: This comes from the 2026 free cover limits table (current edition).'
+  sources:
+  - KA_Free_Cover_Limits_2026.xlsx, sheet "Free Cover Limits 2026", cells A4:E10, row 6 (cells A10:E10)
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q5
+  question: What waiting period applies to disability income Option B?
+  outcome: answered
+  answer: Option B has a waiting period of 6 months. The monthly income is only paid after the waiting
+    period has been completed.
+  sources:
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 2 "Benefit options", table 1, row 2 (cells
+    row 2)
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 1 "Overview"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q6
+  question: Under disability Option C, what monthly benefit would a member earning R50 000 a month receive?
+  outcome: answered
+  answer: 'Under Option C, a member whose monthly salary is R50 000 would get R42 500 a month, as an illustration
+    of the general rule. Option C pays 100% of the first R20 000 of monthly salary plus 75% of the balance.
+    The maximum monthly benefit is R300 000, and the benefit starts after a 3-month waiting period.
+
+
+    Caveats: This illustrates the general rule using the figure given. The claims team decides what an
+    actual member receives. The R50 000 is treated as monthly pensionable salary at the date disability
+    started, which is how the guide defines salary.'
+  sources:
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 2 "Benefit options", table 1, row 3 (cells
+    row 3)
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 2 "Benefit options", part 2
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q7
+  question: Until what age is the disability income benefit paid?
+  outcome: answered
+  answer: The disability income benefit is paid monthly, in arrears, for as long as the member is disabled,
+    up to age 65 at most. It stops at the earliest of the member's recovery, the member's death, or the
+    member reaching age 65.
+  sources:
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 3 "Payment term"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q8
+  question: How much funeral cover is provided for a member's 4-year-old child?
+  outcome: answered
+  answer: 'A child aged under 6, including a 4-year-old, has funeral cover of R7 500.
+
+
+    Caveats: This is the general rule from the 2026 Funeral Benefit Rules. The claims or underwriting
+    team decides individual cases.'
+  sources:
+  - KA_Funeral_Benefit_Rules_2026.docx, section 2 "Cover amounts", table 1, row 4 (cells row 4)
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q9
+  question: Is there a waiting period on extended family funeral cover?
+  outcome: answered
+  answer: 'Yes. Extended family members have a 6-month waiting period for death from natural causes. Death
+    from accidental causes is covered immediately. The main member, spouse and children have no waiting
+    period.
+
+
+    Caveats: This is the general rule from the 2026 Funeral Benefit Rules. Whether a particular claim
+    is payable is decided by the claims team.'
+  sources:
+  - KA_Funeral_Benefit_Rules_2026.docx, section 4 "Waiting periods"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q10
+  question: How many extended family members can be added to funeral cover, and what is the maximum entry
+    age?
+  outcome: answered
+  answer: 'A member may add up to 8 extended family members, such as parents, parents-in-law, siblings
+    and grandparents. The maximum entry age for extended family members is 85.
+
+
+    Caveats: This is from the 2026 Funeral Benefit Rules. Extended family cover is optional and paid for
+    by the member through payroll deduction.'
+  sources:
+  - KA_Funeral_Benefit_Rules_2026.docx, section 3 "Extended family cover"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q11
+  question: What documents are needed to submit a disability claim?
+  outcome: answered
+  answer: 'For a disability claim you need: the completed Kestrel disability claim form (employer section
+    and member section), a medical report from the treating doctor, the member''s last 3 payslips, and
+    a certified copy of the member''s ID document. Submit the claim as soon as possible, and no later
+    than 3 months after the end of the waiting period. The employer or broker can submit it through the
+    Kestrel Broker Portal or by email to claims@kestrel-assurance.example.'
+  sources:
+  - KA_Claims_FAQ.docx, section "What documents are needed for a disability claim?"
+  - KA_Group_Disability_Income_Guide_2026.pdf, page 1, section 6 "Claims"
+  - KA_Claims_FAQ.docx, section "How do I submit a claim?"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q12
+  question: Within what period must a member's death be notified to Kestrel?
+  outcome: answered
+  answer: 'A member''s death must be notified to Kestrel within 6 months of the date of death. Claims
+    notified later may be declined. This is the rule in the Group Life guide. The documents don''t give
+    a notification period for funeral cover.
+
+
+    Caveats: This comes from the Group Life Product Guide 2026. Whether a particular late claim is accepted
+    is decided by the claims team.'
+  sources:
+  - KA_Group_Life_Product_Guide_2026.docx, section 5 "Claims"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q13
+  question: Does Kestrel offer group dental cover?
+  outcome: not_found
+  answer: 'The documents I have do not mention group dental cover, so I can''t say whether Kestrel offers
+    it. They cover group life, group disability income and funeral cover only.
+
+
+    Declined: The approved product guides, benefit rules and limit tables do not say anything about dental
+    cover. For an answer on products outside these documents, ask the broker or Kestrel''s product team.'
+  sources: []
+  auto_grade: correctly_declined
+  auto_reasons: 'Auto-grade: correctly declined (automatic check against the gold file, not a human assessment).'
+  assessment: ''
+  comment: ''
+- id: Q14
+  question: What is the premium rate per R1 000 of life cover for a scheme with 150 members?
+  outcome: not_found
+  answer: 'The documents do not give a premium rate per R1 000 of life cover for a scheme with 150 members.
+    They only say premiums are a percentage of the total annual salary bill of covered members, and that
+    rates are guaranteed for 2 years from the scheme commencement or review date and then reviewed based
+    on scheme experience.
+
+
+    Declined: The documents do not state a premium rate per R1 000 of cover, or a rate by scheme size.
+    The broker, scheme administrator or Kestrel underwriting or pricing team would need to give the quoted
+    rate for the scheme.
+
+
+    Caveats: The 150-member scheme falls in band 3 of the free cover limits table, but that table sets
+    cover limits only, not premiums.'
+  sources:
+  - KA_Group_Life_Product_Guide_2026.docx, section 6 "Premiums"
+  - KA_Free_Cover_Limits_2026.xlsx, sheet "Free Cover Limits 2026", cells A4:E10, row 3 (cells A7:E7)
+  auto_grade: correctly_declined
+  auto_reasons: 'Auto-grade: correctly declined (automatic check against the gold file, not a human assessment).'
+  assessment: ''
+  comment: ''
+- id: Q15
+  question: How long does Kestrel take to make a decision on a group life claim?
+  outcome: answered
+  answer: 'Kestrel aims to make a decision on a group life claim within 10 working days of receiving all
+    the required documents. This is a target, not a guarantee, and the 10 working days only start once
+    all the documents are in.
+
+
+    Caveats: This is general product information. The claims team decides individual claims.'
+  sources:
+  - KA_Claims_FAQ.docx, section "How long does it take to assess a claim?"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''

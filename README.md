@@ -1,117 +1,122 @@
 # Kestrel Assistant
 
-A question-answering assistant over the six Kestrel Assurance documents. It answers only from approved documents, quotes the passage or table row behind every claim, uses a calculator for amounts, and says so when the documents are silent. Plain code checks every quote, number and calculation before the answer is shown. It runs locally as a command line, a Streamlit app or an MCP server, with Anthropic, OpenAI, Ollama Cloud or local Ollama models. Headline result: Claude Haiku 5.5 answered all 13 answerable test questions correctly and declined the 2 unanswerable ones in each of three runs, at about US$0.0015 a question (automatic grades; my own assessment of each answer is in the workbook).
+A question-answering assistant for Kestrel Assurance call-centre agents and brokers. It answers only from the six supplied documents, quotes the passage or table row behind every claim, and says so when the documents are silent.
 
-## Run it
+**Result:** on the final code, six of the eight models tested answered all 13 answerable test questions correctly and declined the 2 unanswerable ones in every one of three runs. The default, Claude Haiku 5.5, does so for about US$0.0015 a question in about 4 seconds. The completed workbook is [results/KA_Test_Questions_SUBMISSION.xlsx](results/KA_Test_Questions_SUBMISSION.xlsx).
 
-Prerequisites: [uv](https://docs.astral.sh/uv/) (it installs Python 3.12), and either an API key for Anthropic, OpenAI or Ollama Cloud, or [Ollama](https://ollama.com) running locally with `ollama pull gpt-oss:20b`.
+## The approach
 
-```
-cp .env.example .env                 # set KESTREL_MODEL and the one matching key
-uv sync
-uv run kestrel doctor                # checks everything and prints the fix for anything missing
-uv run kestrel ingest --all
-uv run kestrel ask "What is the group life free cover limit for a scheme with 320 members?"
-uv run streamlit run app/streamlit_app.py     # http://localhost:8501
-uv run kestrel mcp                   # MCP server on stdio; client config in docs/DEMO.md
-uv run python -m eval.run_eval       # the 15 test questions; results in results/<timestamp>_<model>/
-uv run pytest -q                     # 874 tests, offline
-```
+Two ideas shape the design.
 
-Without uv: in a Python 3.12 virtual environment, `pip install -r requirements.txt` then `pip install -e . --no-deps`, and drop `uv run`. The first ingest downloads the embedding model (`bge-small-en-v1.5`) once; after that only the chat model needs the network. `kestrel ask --trace` shows every step; `kestrel --help` lists all commands.
+**The model is not trusted, and neither are the documents.** The model writes a readable answer, but every citation must carry a word-for-word quote. Plain code then checks that each quote exists in an approved, current document, that every number in the answer comes from a cited passage, and that every sum is right. An answer that fails is repaired or withheld, never shown as fact. Documents are scanned for text a reader cannot see: one of the six contains a hidden instruction aimed at AI assistants.
 
-## How it works
+**An assistant is configuration, not code.** A business that proves this on product guides will next want an internal policies assistant, then an IT help desk. So the core knows nothing about insurance. Each assistant ("bot") is a folder that declares its documents, prompt, tools, MCP servers, skills, allowed models and privacy rules. The repository ships two: `kestrel-products` (the assessed one) and `staff-policies`, a small demonstration bot locked to on-device models. Adding a third needs no code: [docs/ADDING_A_BOT.md](docs/ADDING_A_BOT.md).
 
 ```mermaid
 flowchart LR
-    Q["Question<br/>CLI, app or MCP"] --> A["Access check<br/>and privacy gate"]
-    A --> S["Scope<br/>current edition<br/>unless one is named"]
-    S --> G["Agent with read-only tools<br/>search, table, calculate"]
-    G --> C["Evidence checks<br/>quotes, numbers, sums,<br/>sources"]
-    C -- "fails: one repair turn" --> G
-    C --> R["Answer with quotes,<br/>or declined, or withheld"]
-    R --> L[("Audit log,<br/>hash-chained")]
+    Q["Question<br/>CLI, web app or MCP"] --> A["Access check<br/>and privacy screen"]
+    A --> G["Agent with read-only tools<br/>search, read table, calculate"]
+    G --> C["Evidence checks<br/>quotes, numbers, sums, sources"]
+    C -- "fails: repair" --> G
+    C --> R["Answer with quotes,<br/>declined, or withheld"]
+    R --> L[("Audit log")]
 ```
 
-| Decision | Why | Trade-off accepted |
+## Run it
+
+You need [uv](https://docs.astral.sh/uv/) (it installs Python 3.12) and one of: an Anthropic, OpenAI or Ollama Cloud API key, or [Ollama](https://ollama.com) running locally with `ollama pull gpt-oss:20b`.
+
+```
+cp .env.example .env                 # set KESTREL_MODEL and the matching key
+uv sync
+uv run kestrel doctor                # checks the setup and prints the fix for anything missing
+uv run kestrel ingest --all
+uv run kestrel ask "What is the group life free cover limit for a scheme with 320 members?"
+uv run streamlit run app/streamlit_app.py     # web app at http://localhost:8501
+uv run kestrel mcp                   # MCP server (client config in docs/DEMO.md)
+uv run python -m eval.run_eval       # the 15 test questions, results in results/
+uv run pytest -q                     # 993 tests, offline
+```
+
+Without uv: in a Python 3.12 virtual environment, `pip install -r requirements.txt`, then `pip install -e . --no-deps`, and drop `uv run`. The first ingest downloads a small embedding model once. `kestrel ask --trace` shows every step.
+
+## Key decisions
+
+| Decision | Why | Trade-off |
 |---|---|---|
-| One SQLite file: FTS5 keyword search plus sqlite-vec vectors, fused by rank | No services or Docker; exact terms ("Option B", amounts) matter as much as meaning | Not a distributed index; it sits behind an interface for replacement |
-| An agent with tools, not one-shot retrieval | Band lookups and arithmetic need a table tool and a calculator | Several model calls per question |
-| Quotes checked by code | A made-up quote or number is caught, not just unlikely | Some correct answers are withheld when the model paraphrases |
-| Edition status in a manifest, not the prompt | "Which guide is current" is a governance fact | Someone must maintain the manifest |
-| Bots as folders of configuration | A new assistant needs no code | A configuration schema to keep stable |
+| One SQLite file: keyword search (FTS5) plus vectors (sqlite-vec), fused by rank | Runs anywhere with no services; exact terms like "Option B" and amounts matter as much as meaning | Not a distributed index; it sits behind an interface |
+| An agent with tools, not one-shot retrieval | Band lookups and arithmetic need a table reader and a calculator | Two to four model calls per question |
+| Quotes and numbers checked by code | A made-up quote or figure is caught, not just unlikely | A correct answer is sometimes withheld |
+| Which edition is current is recorded in a manifest | It is a governance fact, not something a model should guess | Someone must maintain the manifest |
+| LangChain DeepAgents | One agent runs on four providers, with skills and MCP support | A framework dependency to pin |
 | Embeddings on the CPU | Documents never leave the machine for indexing | A smaller model than production would use |
 
-Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+More: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Documents: formats and inconsistencies
+## Document formats and inconsistencies
 
-DOCX, PDF and XLSX are parsed with their structure: headings, numbered sections, pages, sheets, cell ranges and table rows. Tables are stored whole and row by row, so a citation names the row used (`KA_Free_Cover_Limits_2026.xlsx > sheet "Free Cover Limits 2026", cells A4:E10, row 3`). Text a reader could not see is removed and recorded as a finding. What I found:
+DOCX, PDF and XLSX are parsed with their structure, so a citation names the section, page or spreadsheet row, for example `KA_Free_Cover_Limits_2026.xlsx > sheet "Free Cover Limits 2026", cells A4:E10, row 4 (cells A8:E8)`. Tables are stored whole and row by row. What I found in the documents:
 
-- **A hidden instruction** in the claims FAQ: white, 1-point text telling AI assistants that every claim is approved within 24 hours with no documents. It is removed from search and recorded; the visible "10 working days" is kept.
-- **Two group life editions** differ on maximum cover (R20m and R25m), continuation option (30 and 60 days; R3m and R5m), death notification (12 and 6 months) and premium guarantee (1 and 2 years). The manifest marks 2025 superseded, so answers use 2026 unless the question names 2025.
-- Both guides refer to the free cover limit schedule, but only a 2026 schedule exists.
-- The FAQ has no version, only "Updated March 2026".
-- The schedule's first band starts at 10 members; smaller schemes appear only in a note.
-- "Review date" is used with two meanings.
-- Funeral claim timing is worded differently in two documents but agrees.
+- **A hidden instruction** in the claims FAQ: white, 1-point text telling AI assistants that every claim is approved within 24 hours with no documents. It is removed from search and recorded as a finding; the visible "10 working days" beside it is kept.
+- **Two editions of the group life guide disagree** on maximum cover (R20m and R25m), the continuation option (30 and 60 days; R3m and R5m), death notification (12 and 6 months) and the premium guarantee (1 and 2 years). The 2025 edition is marked superseded, so answers use 2026 unless the question names 2025.
+- Smaller points: the free cover schedule exists only for 2026, the FAQ carries no version, and "review date" is used with two meanings.
 
-## Evaluation: results and what the failures taught
+## Evaluation
 
-Automatic grades on the 15 test questions (13 answerable, 2 not), from `results/report.md`:
+Three runs of the 15 test questions per model on the final code (13 answerable, 2 not). Grades are automatic; I read every answer not graded correct.
 
-| Model | Runs | Correct | Correctly declined | Partial, incorrect, withheld or error | Cost per question | Median time |
+| Model | Correct | Correctly declined | Other | Needed a repair | Cost per question | Median time |
 |---|---|---|---|---|---|---|
-| Claude Haiku 5.5 (default) | 3 | 39 of 39 | 6 of 6 | 0 | US$0.0015 | 4.3 s |
-| Claude Sonnet 5.5 | 1 | 13 of 13 | 2 of 2 | 0 | US$0.029 | 5.9 s |
-| OpenAI `gpt-6.1-sol` | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 6.5 s |
-| Kimi `kimi-k3.1-pro` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 13.9 s |
-| DeepSeek `deepseek-v4.1-flash` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 4.4 s |
-| `gpt-oss:20b` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 6.4 s |
-| `gpt-oss:20b` (local Ollama) | 1 | 13 of 13 | 2 of 2 | 0 | no API charge | 3.5 s |
+| Claude Haiku 5.5 (default) | 39 of 39 | 6 of 6 | 0 | 1 | US$0.0015 | 3.9 s |
+| Claude Sonnet 5.5 | 39 of 39 | 6 of 6 | 0 | 3 | US$0.027 | 4.6 s |
+| OpenAI `gpt-6.1-sol` | 39 of 39 | 6 of 6 | 0 | 3 | not priced | 6.0 s |
+| Kimi `kimi-k3.1-pro` (Ollama Cloud) | 39 of 39 | 6 of 6 | 0 | 0 | not priced | 6.9 s |
+| `gpt-oss:20b` (Ollama Cloud) | 39 of 39 | 6 of 6 | 0 | 0 | not priced | 7.0 s |
+| `gpt-oss:20b` (local Ollama) | 39 of 39 | 6 of 6 | 0 | 0 | no API charge | 5.7 s |
+| DeepSeek `deepseek-v4.1-flash` (Ollama Cloud) | 37 of 39 | 6 of 6 | 1 partial, 1 graded incorrect | 1 | not priced | 2.7 s |
+| GLM `glm-5.3-flash` (Ollama Cloud) | 37 of 39 | 6 of 6 | 2 graded incorrect | 1 | not priced | 3.5 s |
 
-Reworded set: on Claude Haiku 5.5, 8 graded correct, 1 correctly declined and 1 graded incorrect. The "incorrect" one is a grader false alarm: the answer (R65 000) is right, but the gold file forbade the figure R60 000, which is also the legitimate balance in the sum. I left that gold file as written. Retrieval without a model: the section an answer needs ranked first for 13 of 13 test questions. On the reworded set it ranked first for 7 of 9 and in the top six for 8 of 9; one paraphrase ("highest amount ... insured for") shares no words with "Maximum cover" and ranked seventh, though the agent still answered it by searching again.
+No answer was withheld or errored. DeepSeek's partial answer is a real miss (it dropped "before normal retirement age"); the three graded incorrect give the right figure but volunteer a neighbouring one, so I do not recommend those two models. "Needed a repair" counts answers whose first draft failed a check and was corrected. The submitted workbook is one further Haiku run on the final commit: 13 correct, 2 correctly declined. All runs: [results/report.md](results/report.md).
 
-Each model's first run was kept before any fix. Claude Sonnet 5.5 failed all 15 questions because the provider rejected a forced tool choice; a general retry fixed it. Claude Haiku 5.5 had two answers withheld: one cited a whole table instead of its row, one wrote 0.75 where the source said 75%. Both were fixed in general code, not per question. The automatic grader marked a correct answer wrong for saying a target was "not a guaranteed time", so a person reviews every answer and that review fills the workbook.
+**What the failures taught.**
 
-The checks prove the quotes and numbers are real, not that the sentence reads the quote faithfully: an answer can still drop a condition such as "working days", so the gold file lists conditions that must be kept. The 15 questions were also the development set, so they flatter the system; ten reworded questions, written without sight of any model answer, are the nearest independent check. Adversarial set of hidden instructions: of 21 hiding techniques across DOCX, PDF, XLSX and Markdown, 20 are detected, all 18 planted instructions that should be removed are kept out of search, and none of 6 clean controls is flagged. The miss is a visible instruction with no AI-directed wording. In 21 attack questions each on Claude Haiku 5.5 and local `gpt-oss:20b`, no answer followed a planted instruction (attack run made before the last two scanner fixes). Details: [docs/EVALUATION.md](docs/EVALUATION.md).
+- Each model's first run was kept before any fix. One model failed all 15 questions because its provider rejected a setting; another had two answers withheld. Fixes went into general code, never a rule for one question.
+- A clean score hid a weakness. Two questions passed only because a repair turn rescued a wrong first draft every time: the model misread which band of a table a number fell in. When repairs sometimes failed, answers were withheld. The table tool now finds the matching row in code, and that count of repairs is tracked per model.
+- The automatic grader marked correct answers wrong three times, so I assessed every answer myself; that assessment fills the workbook.
+- The checks prove the quotes and numbers are real, not that the sentence reads the quote faithfully. An answer could still drop a condition such as "working days", so the gold answers list the conditions that must be kept.
+- The 15 questions were also my development set, which flatters the system. Ten reworded questions written without sight of any answer are the nearest independent check: 8 graded correct, 1 correctly declined and 1 graded incorrect, which is a grader false alarm (the answer, R65 000, is right). Search alone ranked the needed section first for 13 of 13 test questions but only 7 of 9 reworded ones, so retrieval depends on wording more than the headline shows.
+- An independent code review after the build found ten defects, all fixed with tests.
+- Hidden instructions: of 21 hiding techniques tried across the formats, 20 are detected, and no answer followed a planted instruction.
+
+How to reproduce every number, and the full failure list: [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## Production: security, POPIA, monitoring, scale
 
-- **Identity:** single sign-on mapped to roles; every service method already checks the caller's role, and operator actions need a separate role.
-- **POPIA:** questions are already screened for ID numbers, phone numbers, emails and labelled identifiers before any model, tool or log sees them; add entity recognition, an in-region redactor, operator agreements and a transfer basis signed off by the Information Officer.
-- **Residency:** `confidential` bots already refuse external destinations; models go through an LLM gateway with no-retention terms, in region where available.
-- **Documents:** maker-checker approval bound to the file hash; blocking is immediate and lists every answer that cited the document.
-- **Monitoring:** every audit row already holds tokens, cost, latency and outcome; add traces, dashboards, alerts on withheld and declined rates, and weekly sampled review.
-- **Scale:** the service is stateless; move to PostgreSQL with pgvector and serve MCP over HTTP behind OAuth. The model quota, not retrieval, is the first limit.
-- **Change control:** every model, prompt or bot change passes the evaluation set before release.
+- **Identity:** single sign-on mapped to roles. Every service call already checks the caller's role.
+- **POPIA:** questions are screened for ID numbers, phone numbers, emails and labelled identifiers before any model, tool or log sees them. Pattern screening is best effort, so production adds entity recognition, operator agreements and Information Officer sign-off.
+- **Data residency:** a bot marked `confidential` already refuses any model or tool outside the machine. In production, models sit behind a gateway, in region where available.
+- **Documents:** approval is tied to the file's hash; blocking a document is immediate and lists every past answer that cited it.
+- **Monitoring:** every question is logged with outcome, tokens, cost and latency in a tamper-evident audit trail; add dashboards, alerts on withheld and declined rates, and sampled human review.
+- **Scale:** the service is stateless. Move to a managed database and search service, and serve MCP over authenticated HTTP.
 
-Full detail, with Azure, AWS and Google Cloud mappings: [docs/PRODUCTION_ARCHITECTURE.md](docs/PRODUCTION_ARCHITECTURE.md).
-
-## More than one assistant
-
-A bot is a folder: `bot.yaml` (audience, documents, tools, model and privacy policy), a prompt, a manifest and a gold file. A second working bot, `staff-policies`, covers three fictitious policies, is locked to local models and uses an approved MCP tool. [docs/ADDING_A_BOT.md](docs/ADDING_A_BOT.md) shows how to add one without code.
+The full design, with Azure, AWS and Google Cloud options: [docs/PRODUCTION_ARCHITECTURE.md](docs/PRODUCTION_ARCHITECTURE.md).
 
 ## Cost per question
 
-Measured from token counts at list prices in `config/pricing.yaml`: US$0.0015 on Claude Haiku 5.5 (about 11 000 input and 600 output tokens) and US$0.029 on Claude Sonnet 5.5. The OpenAI and Ollama Cloud models have no price in the config, so their cost is reported as unknown rather than guessed. A question takes several model calls (search, table lookup, answer, sometimes a repair). Local Ollama has no API charge. The whole build and evaluation cost roughly US$3 on Anthropic by token count, plus unpriced OpenAI usage and an Ollama Cloud subscription in API fees.
+Measured from token counts at list prices in `config/pricing.yaml`: about **US$0.0015 on Claude Haiku 5.5** (roughly 11 000 input and 600 output tokens over two or three model calls) and US$0.027 on Claude Sonnet 5.5. The other hosted models have no price in the config, so their cost is shown as unknown rather than guessed; local Ollama has no API charge. Building and evaluating this cost roughly US$6 in Anthropic fees by token count, plus OpenAI usage and an Ollama Cloud subscription.
 
 ## Assumptions
 
 - The 2026 documents are current; a question that names no edition is about 2026.
-- The FAQ took effect on 1 March 2026.
-- Users are call-centre agents and brokers asking general product questions; decisions about a specific member or claim are refused and referred.
-- The supplied documents are approved as they are; hidden text is not business content.
-- No outside insurance knowledge is used; answers come only from the documents.
+- Users ask general product questions. Decisions about a specific member or claim are refused and referred.
+- Hidden text is not business content. No outside insurance knowledge is used.
 
-## Known limitations and what I would do with more time
+## What I would do with more time
 
-- Fifteen questions, also used in development, are too few: build a golden set of 100 or more anonymised agent questions with answers agreed by content owners.
-- Check that the conditions in a quote reach the answer, and measure faithfulness by sampled human review.
-- Pattern screening misses unlabelled names and health details: add entity recognition.
-- A visible instruction without trigger wording is still kept; document approval is the control.
-- OCR for scanned documents, larger in-region embeddings, prompt caching and load tests.
+- Build a test set of 100 or more real agent questions, with answers agreed by content owners.
+- Measure whether answers keep every condition by sampled human review; one model dropped one in testing.
+- Detect names and health details that pattern screening misses.
+- Catch visible instructions that carry no tell-tale wording; today document approval is the only control.
+- Improve retrieval for reworded questions with a larger embedding model and a reranker; add OCR, caching and load tests.
 
-## Time spent and AI disclosure
-
-Active build time was [ACTIVE BUILD TIME] (from just before 23:00 on 22 November 2026, excluding a pause for a usage limit from 02:26 to 04:01; the commit history is the record), which is above the brief's suggested four hours: the time beyond the minimum went into the Streamlit app, the MCP server, the second bot, the model matrix and the adversarial set. I directed the work and made the decisions, with Claude Code as lead and builder and OpenAI Codex as independent design reviewer; see [docs/AI_DISCLOSURE.md](docs/AI_DISCLOSURE.md), the manager's note [docs/BUSINESS_NOTE.md](docs/BUSINESS_NOTE.md) and the demo script [docs/DEMO.md](docs/DEMO.md).
+See also: [business note](docs/BUSINESS_NOTE.md) · [AI tool disclosure](docs/AI_DISCLOSURE.md) · [demo script](docs/DEMO.md)

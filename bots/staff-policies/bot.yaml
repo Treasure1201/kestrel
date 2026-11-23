@@ -32,7 +32,7 @@ privacy:
 
 verification:
   on_failure: withhold
-  max_repairs: 1
+  max_repairs: 1                               # repair turns allowed when evidence checks fail
 
 evaluation:
   gold: eval/gold.yaml

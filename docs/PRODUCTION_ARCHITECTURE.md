@@ -289,7 +289,7 @@ cost per question =
   + review share (sampled human review time, divided by volume)
 ```
 
-An answer takes several model calls (search, table lookup, final answer, and sometimes a repair). The measured prototype figure is about US$0.0015 on Claude Haiku 5.5 and US$0.029 on Claude Sonnet 5.5, model tokens only, on the evaluation questions. Production cost will differ with the contracted price, model choice, retry rate and question mix.
+An answer takes several model calls (search, table lookup, final answer, and sometimes a repair). The measured prototype figure is about US$0.0015 on Claude Haiku 5.5 and US$0.027 on Claude Sonnet 5.5, model tokens only, on the evaluation questions. Production cost will differ with the contracted price, model choice, retry rate and question mix.
 
 **Levers, in the order to try them**
 
@@ -309,7 +309,7 @@ An answer takes several model calls (search, table lookup, final answer, and som
 | Peak-hour factor over average | 3 |
 | Model calls per question | 4 |
 
-That gives 10,000 questions a day, an average of about 0.35 per second and a peak near 1 per second. At 4 model calls per question the gateway must sustain roughly 4 calls per second, or about 250 a minute, at peak; the token-per-minute quota on the model deployment must cover peak calls times average tokens per call, which is the first limit to check. With answers taking 10 to 15 seconds, about 15 questions are in flight at peak, which a handful of stateless service instances handles. Daily model cost is roughly 10,000 x about US$0.0015 on Claude Haiku 5.5 and US$0.029 on Claude Sonnet 5.5 before caching and routing savings. Retrieval over a few thousand sections is not the bottleneck at this scale; the model quota and provider latency are.
+That gives 10,000 questions a day, an average of about 0.35 per second and a peak near 1 per second. At 4 model calls per question the gateway must sustain roughly 4 calls per second, or about 250 a minute, at peak; the token-per-minute quota on the model deployment must cover peak calls times average tokens per call, which is the first limit to check. With answers taking 10 to 15 seconds, about 15 questions are in flight at peak, which a handful of stateless service instances handles. Daily model cost is roughly 10,000 x about US$0.0015 on Claude Haiku 5.5 and US$0.027 on Claude Sonnet 5.5 before caching and routing savings. Retrieval over a few thousand sections is not the bottleneck at this scale; the model quota and provider latency are.
 
 ## 9. Rollout
 

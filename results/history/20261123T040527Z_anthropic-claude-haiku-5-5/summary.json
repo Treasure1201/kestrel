@@ -1,0 +1,67 @@
+{
+  "grader_version": "1",
+  "models": [
+    "anthropic:claude-haiku-5-5"
+  ],
+  "runs": [
+    1,
+    2,
+    3
+  ],
+  "questions": 15,
+  "records": 45,
+  "ungraded": 0,
+  "grades": {
+    "correct": 37,
+    "partially_correct": 0,
+    "incorrect": 0,
+    "correctly_declined": 6,
+    "incorrectly_declined": 0,
+    "withheld": 2,
+    "error": 0
+  },
+  "outcomes": {
+    "answered": 37,
+    "withheld": 2,
+    "not_found": 6
+  },
+  "withheld": 2,
+  "errors": 0,
+  "retrieval_misses": 0,
+  "retrieval_miss_ids": [],
+  "latency_ms": {
+    "median": 4243.0,
+    "p95": 6917.0,
+    "max": 12095.0
+  },
+  "cost_usd": {
+    "total": 0.065766,
+    "per_question": 0.001461,
+    "unpriced_records": 0
+  },
+  "tokens": {
+    "input": 513009,
+    "output": 28931
+  },
+  "model_calls": 118,
+  "meta": {
+    "bot": "kestrel-products",
+    "question_set": "test",
+    "model": "anthropic:claude-haiku-5-5",
+    "model_override": "anthropic:claude-haiku-5-5",
+    "gold_file": "C:\\Users\\treas\\source\\kestrel\\bots\\kestrel-products\\eval\\gold.yaml",
+    "questions_file": "C:\\Users\\treas\\source\\kestrel\\eval\\KA_Test_Questions.xlsx",
+    "started_at": "2026-11-23T04:05:28.363415+00:00",
+    "finished_at": "2026-11-23T04:09:06.296153+00:00"
+  },
+  "human_review": {
+    "run": 1,
+    "assessments": {
+      "Correct": 12,
+      "Partially correct": 0,
+      "Incorrect": 0,
+      "Correctly declined": 2,
+      "Incorrectly declined": 1
+    }
+  }
+}
