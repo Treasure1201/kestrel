@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from kestrel.contracts import AskResult, BotSummary, SearchResult, SectionView
 from kestrel.errors import ErrorCategory, KestrelError
+from kestrel.redaction import redact_secrets
 
 ErrorKind = Literal[
     "configuration",
@@ -81,7 +82,7 @@ def error_from_exception(exc: BaseException) -> SafeError:
     if not isinstance(exc, KestrelError):
         return generic_error("internal")
     category = exc.category.value
-    message = " ".join(str(exc.user_message or "").split())
+    message = " ".join(redact_secrets(exc.user_message).split())
     if exc.category not in _PASS_THROUGH or not message or _PATH_LIKE.search(message):
         return generic_error(category)
     if len(message) > _MAX_MESSAGE_CHARS:

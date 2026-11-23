@@ -65,6 +65,7 @@ from kestrel.interfaces.mcp_models import (
     search_output,
     section_output,
 )
+from kestrel.redaction import describe_exception, redact_secrets
 
 log = logging.getLogger("kestrel.mcp")
 
@@ -173,10 +174,10 @@ def create_server(
         except AdmissionRejected as exc:
             return generic_error(exc.reason)
         except KestrelError as exc:
-            log.info("%s failed: %s (%s)", method, exc.category.value, exc.detail or exc.user_message)
+            log.info("%s failed: %s (%s)", method, exc.category.value, redact_secrets(exc.detail or exc.user_message))
             return error_from_exception(exc)
-        except Exception:  # noqa: BLE001 - fail closed with a safe message
-            log.exception("%s failed unexpectedly", method)
+        except Exception as exc:  # noqa: BLE001 - fail closed with a safe message
+            log.error("%s failed unexpectedly: %s", method, describe_exception(exc, "internal"))
             return generic_error("internal")
 
     def invalid(exc: _InvalidRequest) -> SafeError:
@@ -257,8 +258,8 @@ def create_server(
                 "ok": report.ok,
                 "checks": [{"name": c.name, "status": c.status} for c in report.checks],
             }
-        except Exception:  # noqa: BLE001 - status must always answer
-            log.exception("doctor failed")
+        except Exception as exc:  # noqa: BLE001 - status must always answer
+            log.error("doctor failed: %s", describe_exception(exc))
             doctor = {"ok": False, "checks": [], "error": generic_error("configuration").message}
         limits = admission.limits
         return json.dumps(

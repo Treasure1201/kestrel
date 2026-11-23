@@ -42,6 +42,7 @@ from kestrel.errors import (
     PrivacyBlockedError,
 )
 from kestrel.llm import check_egress, cost_usd, explain_provider_error, load_prices, parse_model_ref
+from kestrel.redaction import describe_exception, redact_secrets
 from kestrel.service.answering import Answered, answer_question, new_budget
 from kestrel.service.runtime import Runtime
 from kestrel.verify import clean_label, evidence_report
@@ -160,7 +161,7 @@ def _failure(runtime: Runtime, req: _Request, error: KestrelError) -> AskResult:
     outcome = Outcome.REFUSED if error.category in _REFUSED_CATEGORIES else Outcome.ERROR
     return AskResult(
         trace_id=req.trace_id, bot_id=req.bot_id, question=req.screened.text if req.screened else "",
-        outcome=outcome, reason=error.user_message, redactions=req.screened.matched if req.screened else (),
+        outcome=outcome, reason=redact_secrets(error.user_message, runtime.settings), redactions=req.screened.matched if req.screened else (),
         scope=req.scope.scope if req.scope else None, model=req.model, usage=_usage(runtime, req),
         latency_ms=req.latency_ms, error_category=error.category,
         retrieved=req.answered.context.retrieved() if req.answered else (),
@@ -254,8 +255,8 @@ def _audit(runtime: Runtime, req: _Request, result: AskResult) -> None:
     )
     try:
         runtime.store.audit.append(entry)
-    except Exception:  # the answer is still returned; the failure is logged without content
-        log.exception("audit append failed for trace %s", req.trace_id)
+    except Exception as exc:  # the answer is still returned; the failure is logged without content
+        log.error("audit append failed for trace %s: %s", req.trace_id, describe_exception(exc))
 
 
 def _run(runtime: Runtime, req: _Request, question: str, model: str | None) -> AskResult:
@@ -312,10 +313,10 @@ def ask(runtime: Runtime, bot_id: str, question: str, principal: Principal, mode
     try:
         result = _run(runtime, req, question, model)
     except KestrelError as exc:
-        log.info("ask %s failed: %s (%s)", req.trace_id, exc.category.value, exc.detail or "")
+        log.info("ask %s failed: %s (%s)", req.trace_id, exc.category.value, redact_secrets(exc.detail, runtime.settings))
         result = _failure(runtime, req, exc)
-    except Exception as exc:  # fail closed: an unexpected failure is an audited error, never a traceback
-        log.exception("ask %s failed unexpectedly", req.trace_id)
+    except Exception as exc:  # fail closed: an audited error; never the exception text or a traceback
+        log.error("ask %s failed unexpectedly: %s", req.trace_id, describe_exception(exc, "internal"))
         result = _failure(runtime, req, KestrelError("Something went wrong while answering. Please try again.", detail=type(exc).__name__))
     _audit(runtime, req, result)
     return result

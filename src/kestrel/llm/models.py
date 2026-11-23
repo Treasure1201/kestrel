@@ -20,6 +20,7 @@ from kestrel.errors import ConfigurationError, KestrelError, ProviderUnavailable
 from kestrel.llm.catalog import ModelCatalog, load_model_catalog
 from kestrel.llm.policy import is_loopback_url, model_locality, url_host
 from kestrel.llm.refs import ModelRef, parse_model_ref
+from kestrel.redaction import describe_exception, http_status
 
 OLLAMA_CLOUD_URL = "https://ollama.com"
 ANTHROPIC_URL = "https://api.anthropic.com"
@@ -183,7 +184,7 @@ def resolve_model(ref: str | ModelRef, settings: Settings, *, catalog: ModelCata
     except KestrelError:
         raise
     except Exception as exc:
-        raise ConfigurationError(f"Could not set up {parsed}: {type(exc).__name__}.", detail=str(exc)[:300]) from None
+        raise ConfigurationError(f"Could not set up {parsed}: {type(exc).__name__}.", detail=describe_exception(exc)) from None
     return ResolvedModel(
         chat_model=chat,
         ref=parsed,
@@ -200,14 +201,14 @@ def ollama_pull_fix(model: str) -> str:
 def explain_provider_error(exc: BaseException, ref: str | ModelRef) -> KestrelError:
     """Turn a provider or transport exception into a user-safe error with the fix.
 
-    Never includes the exception text in `user_message` (it can echo headers); a
-    short form goes to `detail`.
+    The exception text is never kept (it can echo headers or keys): `detail` holds
+    only the exception class and the HTTP status, if any.
     """
     if isinstance(exc, KestrelError):
         return exc
     parsed = parse_model_ref(ref)
-    status = getattr(exc, "status_code", None)
-    detail = f"{type(exc).__name__}: {str(exc)[:200]}"
+    status = http_status(exc)
+    detail = describe_exception(exc)
     local = parsed.provider == "ollama"
     if local and (status == 404 or "not found" in str(exc).lower()):
         return ProviderUnavailableError(f"Model {parsed.model!r} is not available in Ollama: {ollama_pull_fix(parsed.model)}.", detail=detail)
