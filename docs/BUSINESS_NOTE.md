@@ -1,19 +1,24 @@
 # Kestrel product assistant: a note for managers
 
-## What agents can use it for
+## What it can and cannot do
 
-An agent can ask about group life, disability or funeral cover and get a short answer to read to a caller. The assistant searches only approved Kestrel guides and shows the exact passage or table row behind the answer, with its location. It can also look up benefits and calculate simple amounts, showing the rule used.
+A call-centre agent can ask about group life, disability or funeral cover and get a short answer to read to a caller. The assistant uses only the approved Kestrel guides and shows the exact passage or table row behind each answer. It can also work out simple amounts, showing the rule it used.
 
-It cannot decide whether a particular member is covered or a claim will be paid. Those questions go through the usual process. If the guides do not cover a question, it says so.
+It cannot say whether a particular member is covered or a claim will be paid; those questions go through the usual process. If the guides do not cover a question, it says so rather than guess.
 
 ## How much to trust it
 
-The system checks that each quote exists in a current, approved guide and that the numbers add up. If those checks fail, it holds the answer back and points the agent to the relevant sections. On the 15 test questions, run three times, it answered all 13 covered by the documents correctly each time and declined the other 2.
+The system checks that every quote is in a current, approved guide and that the numbers match. If it cannot confirm an answer, it shows none and points the agent to the sections to read. On the 15 test questions, run three times, it correctly answered all 13 that the guides cover, every time, and each time said it could not answer the 2 they do not.
 
-A real quote can still be misread. The assistant can drop a condition such as "the lower of" or "working days". Agents should read the quoted passage before giving callers an amount, deadline or eligibility rule. A sample of answers still needs human review.
+Treat it as a fast way to find the right passage, not the final word. It can quote the right passage and still leave out a condition such as "working days", so agents should read the quote before giving a caller an amount, deadline or eligibility rule.
 
-ID and phone numbers are removed from questions, but some names and health details will be missed. Agents should leave member details out.
+ID and phone numbers are removed from questions, but some names and health details will be missed, so agents should leave member details out.
 
-## What your team needs to provide
+## What we need from your team
 
-Each guide needs a named owner who approves new versions and can correct or withdraw a wrong guide quickly. We also need real agent questions with member details removed, agreed answers to test against, and reviewers for flagged and sampled answers each week. Rules on personal information must be agreed with the Information Officer before any pilot.
+- A named owner for each guide, who approves new versions and can withdraw a wrong one quickly.
+- About 100 real agent questions, with member details removed, and agreed answers to test against.
+- Reviewers for flagged and sampled answers each week.
+- Rules on personal information, agreed with the Information Officer before any pilot.
+
+With those in place, the next step is a supervised trial with one team of 10 to 20 agents.

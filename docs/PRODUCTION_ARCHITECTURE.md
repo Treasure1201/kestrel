@@ -1,379 +1,321 @@
 # Kestrel Assistant: production architecture
 
-Status: proposal for discussion. Companion to [ARCHITECTURE.md](ARCHITECTURE.md), which describes what is built.
+This is my proposal for taking the prototype into production in a large financial services organisation. [ARCHITECTURE.md](ARCHITECTURE.md) describes what is built and the [README](../README.md) gives the results. Throughout, I keep three things apart:
 
-I would deploy the assistant as a governed service within the organisation. The controls work locally. Scale, identity integration and organisational readiness remain unproven. The proposal below sets out the infrastructure, approvals and operating processes needed before agents could rely on it.
+- **Today**: what the prototype already does, checked against the code.
+- **Production adds**: what I would build or buy.
+- **Organisation decides**: choices for the business, legal, compliance, security or the Information Officer.
 
-Cloud service names, model families and regional availability in sections 3 and 4 reflect general knowledge at the time of writing. Providers change them frequently. Confirm each statement with the provider for the chosen region during design.
+**Vendor facts.** Which models each cloud offers, and which services run in South African regions, change often. I name only well-established services, and every such fact must be confirmed with the provider at design time.
 
-## 1. What production needs
+## Summary
 
-Each row maps a boundary in `src/kestrel/contracts/` to its production replacement. Callers use the Protocol, so replacing storage or a provider adapter does not require changes to the callers.
+**What changes.** The prototype runs on one laptop: a single SQLite database file, a local search index, a user identity read from a settings file, and model calls sent straight to the provider. Production keeps the answering logic as it is: the model searches the approved guides and must quote them word for word, ordinary code checks the quotes and numbers (the "evidence checks"), and the assistant then answers, declines because the guides do not cover the question, or withholds an answer it could not confirm. Production replaces everything around that: a managed database and search, single sign-on, a gateway in front of every model provider, document approval by two people, monitoring with human review, and contracts and sign-offs for personal information.
 
-| Seam | Prototype (built) | Production |
+**Recommended target**, for an organisation already on Microsoft: containers on Azure, Azure Database for PostgreSQL as document record and first search index, Azure API Management as the model gateway, and Entra ID for sign-in. AWS and Google Cloud have equivalents (section 3).
+
+**The three biggest risks.**
+
+1. **A wrong answer that passes the checks.** The checks prove a quote is real and its numbers trace to the source. They cannot prove the sentence reads the quote faithfully: an answer can quote the right passage and drop "working days". Controls: users read the quote, human review of a sample, and evaluation questions that list the conditions an answer must keep.
+2. **Personal information reaching a model provider.** Call-centre staff will type member details, removing them by pattern is best effort, and the model may run outside South Africa. Controls: better detection, question text not stored, operator contracts and a decision on where models run.
+3. **Out-of-date or wrong guides.** Controls: a named owner for every guide, approval by two people, and withdrawal at once when a guide is wrong.
+
+**Order of work.** First agree owners and the personal-information decisions (stage 0 in section 9), because they decide where the system may run. Then build the platform, run the assistant silently on real questions, pilot it with one supervised team, and expand team by team.
+
+## 1. From prototype to production
+
+The code reaches storage, search, the embedding model (which turns text into numbers so passages can be found by meaning), the privacy screen and the audit log through defined interfaces in `src/kestrel/contracts/`, so each can be replaced without changing the code that uses it.
+
+| Area | Today | Production adds |
 |---|---|---|
-| `DocumentRepository` (system of record) | One SQLite file: documents, sections, chunks, findings, manifest status | Managed relational database (PostgreSQL), private network only, point-in-time restore, encrypted with organisation-held keys |
-| Original files | A folder per collection, approval by SHA-256 in `manifest.yaml` | Object storage with versioning and retention lock; files addressed by content hash |
-| `VectorIndex` and `Retriever` (hybrid search) | SQLite FTS5 (BM25) plus `sqlite-vec`, fused by reciprocal rank, filters applied before ranking | pgvector in the same PostgreSQL, or a managed hybrid search service; same pre-ranking filters by collection, status, edition and document permission. Treated as rebuildable from the system of record |
-| `Embedder` | `bge-small-en-v1.5` on CPU via fastembed | Larger multilingual embedding model hosted in region; model name stored beside every vector so a change forces a re-index |
-| Chat model access | LangChain provider selected by `KESTREL_MODEL` (Ollama, Ollama Cloud, Anthropic, OpenAI) | LLM gateway: approved model catalogue, per-bot routing, quotas, fallback, token metering, no-retention terms, in-region endpoints where available |
-| `PrivacyScreen` | Deterministic rules: validated SA ID numbers, phones, emails, labelled account, policy and reference numbers, labelled names, dates of birth, operator patterns. Fails closed | Same rules, plus entity recognition for names, addresses and health terms, an in-region redaction service, and DLP scanning of stores and logs. Measured against a labelled test set in CI |
-| Egress policy | Each destination tagged `on-device` or `external`; `confidential` bots may use on-device destinations only; tracing to third parties switched off in code | Destinations tagged by approved data classification and region; network egress allow-list enforced by the platform, not only by code |
-| Identity (`Principal`) | User, roles and channel from local settings | Single sign-on (OIDC), group-to-role mapping, service identities for channels, per-call authorisation on every service method |
-| Bot registry | Folders of YAML in git (`bots/<id>/bot.yaml`), validated at load | Reviewed configuration repository with maker-checker approval and CI evaluation gates, published to a registry service |
-| MCP transport | stdio, local client | Streamable HTTP behind the API gateway, OAuth with scoped, short-lived tokens, per-principal rate limits |
-| `AuditLog` | Append-only, hash-chained SQLite table; `audit verify` detects an edited or deleted row; per-bot pruning with checkpoint rows | Same record shape in the relational database, chain head anchored periodically in write-once storage, exports to the organisation's log platform and SIEM |
-| Ingestion | CLI over a folder; parse, hidden-text scan, manifest check, chunk, embed; idempotent | Queue-driven workers, isolated with no outbound network; maker-checker approval bound to the content hash; staged publish with rollback |
-| Observability | Tokens, cost and latency in each audit row; evaluation reports | OpenTelemetry traces and metrics, dashboards, alerts, human review queue |
+| Document records | One SQLite file | Managed PostgreSQL on a private network, with point-in-time restore |
+| Approval | A file per assistant (`manifest.yaml`) lists approved documents, each tied to the SHA-256 fingerprint of its exact bytes; a changed file drops to "pending" | Originals in locked storage; a review screen; approval by someone other than the uploader |
+| Search | Keyword and meaning search, combined; filtered by collection, edition and status before ranking | The same in PostgreSQL (pgvector extension) or a managed search service, plus document permissions; the index is rebuildable from the database |
+| Embedding model | `bge-small-en-v1.5`, small, English, local | A larger multilingual model hosted in region |
+| Models | One setting picks Anthropic, OpenAI, Ollama Cloud or local Ollama | A gateway all model calls pass through: approved models, quotas, metering, fallback |
+| Personal information | Rule-based removal before the model or the log; if screening fails, the question is refused | Entity recognition and measured accuracy (section 6) |
+| Where text may go | Destinations tagged on-device or external; a `confidential` assistant may use on-device ones only | The network allows only approved destinations |
+| Identity | User and roles from local settings, checked on every call | Single sign-on, directory groups mapped to roles |
+| Assistant configuration | A folder per assistant (the code calls it a bot) | A reviewed repository; release only after evaluation passes |
+| MCP server (lets other AI tools call the assistant) | Local connection only | Authenticated HTTPS with short-lived tokens |
+| Audit log | Each question's outcome, sources, cost and timing; each row includes a hash of the one before, so `kestrel audit verify` detects an edited or deleted row. If the write fails, the answer is still returned | The latest hash copied to write-once storage; no answer returned without a record |
 
-The service keeps the answer contract (`answered`, `partial`, `not_found`, `refused`, plus application-set `withheld` and `error`), the seven deterministic evidence checks, edition scoping, collection isolation, and the rule that nothing under `src/` is specific to a document or a business line.
+What stays the same: the outcomes (answered, partial, declined, refused for questions outside its remit such as a specific member's claim, and withheld when the checks still fail after one retry), the checks in code, current editions unless a question names another, each assistant's documents kept separate, and no insurance-specific logic in the core code.
 
 ## 2. Target architecture
 
 ```mermaid
 flowchart TB
     subgraph CH["Channels"]
-        DESK["Agent desktop<br/>web panel"]
+        DESK["Call-centre desktop<br/>web panel"]
         TEAMS["Microsoft Teams app"]
-        MCPC["Approved MCP clients"]
-        API["Internal API consumers"]
+        MCPC["Approved AI tools<br/>over MCP"]
+        API["Internal systems<br/>over an API"]
     end
 
-    CH --> GW["API gateway<br/>WAF, TLS, rate and token limits"]
-    IDP["Identity provider<br/>SSO, groups to roles"] -. tokens .-> GW
+    CH --> GW["API gateway<br/>firewall, TLS, rate limits"]
+    IDP["Single sign-on<br/>groups to roles"] -. tokens .-> GW
 
-    GW --> SVC["Assistant service, stateless<br/>access check, scope, agent,<br/>evidence checks, outcome"]
-    SVC --> REG["Bot registry<br/>approved bot configs,<br/>MCP servers, skills"]
-    SVC --> PRIV["Privacy and policy layer<br/>rules, entity recognition,<br/>egress and classification policy"]
-    PRIV --> LLMGW["LLM gateway<br/>approved models, routing,<br/>quotas, metering"]
+    GW --> SVC["Assistant service, stateless<br/>access check, model with tools,<br/>evidence checks, outcome"]
+    SVC --> REG["Assistant registry<br/>approved configurations,<br/>approved tools"]
+    SVC --> PRIV["Privacy and policy layer<br/>rules, entity recognition,<br/>destination policy"]
+    PRIV --> LLMGW["Model gateway<br/>approved models, routing,<br/>quotas, metering"]
     LLMGW --> MODELS["Managed model endpoints<br/>in region where available"]
-    SVC --> RET["Retrieval<br/>hybrid search with<br/>pre-ranking permission filters"]
+    SVC --> RET["Search<br/>keyword and meaning,<br/>filtered before ranking"]
     RET --> IDX[("Search index<br/>rebuildable")]
-    RET --> SOR[("System of record<br/>documents, sections,<br/>status, approvals")]
-    SVC --> AUD[("Audit store<br/>hash chain, anchored<br/>in write-once storage")]
+    RET --> SOR[("Document records<br/>sections, status,<br/>approvals")]
+    SVC --> AUD[("Audit store<br/>hash chain, copied to<br/>write-once storage")]
 
-    subgraph ING["Ingestion with approval"]
-        UP["Upload or connector"] --> WRK["Isolated workers<br/>parse, scan, chunk, embed"]
-        WRK --> REV["Review and<br/>maker-checker approval"]
+    subgraph ING["Document intake with approval"]
+        UP["Upload or connector"] --> WRK["Isolated workers<br/>parse, scan, split, index"]
+        WRK --> REV["Review and approval<br/>by a second person"]
     end
     REV --> SOR
     WRK --> IDX
-    WRK --> OBJ[("Object storage<br/>originals by hash")]
+    WRK --> OBJ[("Object storage<br/>originals by fingerprint")]
 
-    SVC -. traces, metrics .-> OBS["Observability<br/>dashboards, alerts,<br/>review queue"]
-    AUD -. export .-> SIEM["Log platform and SIEM"]
+    SVC -. traces, metrics .-> OBS["Monitoring<br/>dashboards, alerts,<br/>review queue"]
+    AUD -. export .-> SIEM["Security monitoring"]
 ```
 
-Service instances hold no session state, so more instances can share the load. A channel that needs conversation history holds it itself or uses a short-lived store governed by the bot's retention policy.
+The service keeps no conversation state, so more copies can share the load.
 
 **One question, end to end**
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor A as Call-centre agent
+    actor U as User (call-centre staff)
     participant G as API gateway
     participant S as Assistant service
     participant P as Privacy and policy
-    participant R as Retrieval
-    participant L as LLM gateway
+    participant R as Search
+    participant L as Model gateway
     participant V as Evidence checks
     participant D as Audit store
 
-    A->>G: question, SSO token, bot id
+    U->>G: question, sign-in token, assistant
     G->>G: validate token, rate limit
-    G->>S: ask(bot, question, principal)
-    S->>S: role check against bot audience
+    G->>S: ask(assistant, question, user)
+    S->>S: check the user's role
     S->>P: screen question
-    P-->>S: redacted text, or block
-    S->>S: resolve edition and date scope
-    loop agent turns, within budget
-        S->>L: redacted prompt and tools
+    P-->>S: question with details removed, or refused
+    S->>S: work out which edition applies
+    loop model turns, within a budget
+        S->>L: screened question and tools
         L-->>S: tool call or answer
-        S->>R: search within bot collections, status, permissions
-        R-->>S: labelled excerpts
+        S->>R: search this assistant's approved documents
+        R-->>S: labelled passages
     end
-    S->>V: answer, citations, calculations
+    S->>V: answer, quotes, calculations
     alt checks fail
-        V-->>S: specific issues
-        S->>L: one repair turn
-        S->>V: re-check
+        V-->>S: the specific failures
+        S->>L: one retry with the failures listed
+        S->>V: check again
     end
     V-->>S: pass, or withhold
     S->>D: append audit record
-    D-->>S: receipt
-    S-->>A: answer with quotes and status
+    D-->>S: confirmed
+    S-->>U: answer with quotes and status
 ```
-
-In production the audit append completes before the answer is returned. If the audit store is unavailable, the service returns an operational error rather than an unrecorded answer.
 
 **Document intake**
 
 ```mermaid
 flowchart LR
-    U["Upload by content owner<br/>or connector from DMS"] --> H["Store original<br/>by SHA-256"]
-    H --> P["Parse<br/>structure, tables, locators"]
+    U["Upload by content owner<br/>or connector"] --> H["Store original<br/>by fingerprint"]
+    H --> P["Parse<br/>structure, tables, locations"]
     P --> SC["Scan<br/>hidden text, injected<br/>instructions, malware"]
-    SC --> RV["Review<br/>findings, extracted sections,<br/>edition, effective date"]
-    RV --> AP{"Maker-checker approval<br/>approver is not the uploader;<br/>bound to the content hash"}
+    SC --> RV["Review<br/>findings, sections,<br/>edition, effective date"]
+    RV --> AP{"Approval by someone<br/>other than the uploader,<br/>tied to the fingerprint"}
     AP -- rejected --> X["Pending, with reason"]
-    AP -- approved --> PB["Publish<br/>status current, prior edition<br/>superseded, index updated"]
+    AP -- approved --> PB["Publish<br/>new edition current,<br/>previous superseded"]
     PB --> LIVE["Searchable"]
-    LIVE -- "problem found" --> BL["Block<br/>excluded from search at once;<br/>list affected answers"]
-    LIVE -- "bad publish" --> RB["Roll back<br/>to previous approved hash;<br/>active blocks retained"]
+    LIVE -- "problem found" --> BL["Block<br/>out of search at once;<br/>list answers that cited it"]
+    LIVE -- "bad publish" --> RB["Roll back<br/>to previous approved file"]
 ```
 
-Approval applies to the file's exact bytes. Changing an approved file returns it to `pending`, as the local manifest already does. Production needs a review screen, separate uploader and approver roles, and an audit entry at each step.
+Today, blocking a document (`kestrel docs block`) and listing the past answers that cited it already work. Production adds the review screen, separate uploader and approver roles and malware scanning.
 
 ## 3. Cloud service mapping
 
-These are candidate services. Confirm availability in the chosen region during design.
+Candidate services, all to be confirmed for the chosen region.
 
 | Capability | Azure | AWS | Google Cloud |
 |---|---|---|---|
-| Container hosting | Azure Container Apps; AKS | ECS on Fargate; EKS | Cloud Run; GKE |
-| Managed relational database | Azure Database for PostgreSQL (Flexible Server, pgvector extension); Azure SQL Database | Amazon Aurora PostgreSQL or RDS for PostgreSQL (pgvector) | Cloud SQL for PostgreSQL or AlloyDB (pgvector) |
-| Managed hybrid and vector search | Azure AI Search (keyword, vector, hybrid, semantic ranker) | Amazon OpenSearch Service (hybrid queries); Bedrock Knowledge Bases | Vertex AI Search; Vertex AI Vector Search |
-| Object storage with retention lock | Blob Storage with immutability policies | S3 with Object Lock | Cloud Storage with Bucket Lock |
-| Model access | Azure OpenAI and the Microsoft Foundry model catalogue: OpenAI GPT models, plus Meta Llama, Mistral, DeepSeek and others; Anthropic Claude has been added to Foundry | Amazon Bedrock: Anthropic Claude, Amazon Nova, Meta Llama, Mistral, Cohere, and others | Vertex AI: Google Gemini, plus Anthropic Claude, Llama, Mistral and open models through Model Garden |
-| Embedding models | Azure OpenAI embeddings; catalogue models | Amazon Titan and Cohere embeddings on Bedrock | Vertex AI text embeddings (Gemini embedding models) |
-| API gateway | Azure API Management (includes AI gateway policies: token limits, metering) | Amazon API Gateway | Apigee; API Gateway |
-| Identity | Microsoft Entra ID; managed identities | IAM Identity Center federated to the corporate IdP; IAM roles | Cloud Identity or Workforce Identity Federation; service accounts |
-| Secrets and keys | Key Vault; Managed HSM | Secrets Manager; KMS; CloudHSM | Secret Manager; Cloud KMS; Cloud HSM |
-| Queues and events | Service Bus; Event Grid | SQS; EventBridge | Pub/Sub; Eventarc |
-| Observability | Azure Monitor, Application Insights, Log Analytics | CloudWatch; X-Ray | Cloud Monitoring, Cloud Logging, Cloud Trace |
-| PII detection and DLP | Azure AI Language PII detection; Microsoft Purview | Amazon Comprehend PII detection; Amazon Macie; Bedrock Guardrails sensitive-information filters | Sensitive Data Protection (Cloud DLP) |
-| Prompt-injection screening | Azure AI Content Safety Prompt Shields | Bedrock Guardrails prompt-attack filter | Model Armor |
+| Containers | Azure Container Apps; AKS | ECS on Fargate; EKS | Cloud Run; GKE |
+| PostgreSQL with pgvector | Azure Database for PostgreSQL | Amazon RDS or Aurora PostgreSQL | Cloud SQL for PostgreSQL; AlloyDB |
+| Managed search service | Azure AI Search | Amazon OpenSearch Service | Vertex AI Search |
+| Object storage with retention lock | Blob Storage, immutability policies | S3 Object Lock | Cloud Storage Bucket Lock |
+| Model access | Azure OpenAI and the Azure model catalogue | Amazon Bedrock | Vertex AI |
+| API gateway | Azure API Management | Amazon API Gateway | Apigee |
+| Identity | Microsoft Entra ID | IAM Identity Center | Cloud Identity |
+| Secrets and keys | Azure Key Vault | AWS Secrets Manager; AWS KMS | Secret Manager; Cloud KMS |
+| Monitoring | Azure Monitor | Amazon CloudWatch | Cloud Monitoring and Logging |
+| Personal information detection | Azure AI Language PII detection | Amazon Comprehend | Sensitive Data Protection |
 | Document parsing and OCR | Azure AI Document Intelligence | Amazon Textract | Document AI |
-| Teams channel | Azure Bot Service | Azure Bot Service (Teams is Microsoft-hosted) | Azure Bot Service |
 
-All three expose OpenTelemetry-compatible collection, so the service emits one telemetry format whatever the host. Managed PII services are tuned mostly for US and European formats; South African ID numbers, phone formats and internal policy and member numbers need the custom rules the local implementation already has.
+I have deliberately not listed which model families each cloud offers, or where, because that changes month to month. Managed detection services may not recognise South African ID numbers or internal policy numbers, so the prototype's own rules stay.
 
-For a collection of a few thousand sections, I would start with PostgreSQL and pgvector. The records and vectors fit in one database. pgvector gives approximate nearest-neighbour search, PostgreSQL full-text search gives the keyword side, and permission filters are an ordinary `WHERE` clause in the same transaction as the publish. One store means one backup, one access model and no drift between record and index. I would keep that default until load measurements justify another service.
+**Database before search service.** For a few thousand sections I would start with PostgreSQL and pgvector: one store, one backup, one access model, and no gap between what is approved and what is searchable. I would add a search service only when measurements demand it.
 
-I would add a dedicated engine for measured needs: many collections and millions of chunks, strict latency at high concurrency, built-in semantic reranking, or search that must scale independently of transactions. Managed choices are Azure AI Search, OpenSearch or Vertex AI Search. Qdrant, self-hosted on the container platform or as its managed cloud, suits teams that want a portable vector engine with payload filtering and no lock-in to one cloud's search product; its keyword side is weaker than a full-text engine, so hybrid search needs care. In every case the index is derived data, rebuilt from the system of record, and the pre-ranking filter rule from the local implementation (`VectorIndex.search` ranks only allowed documents, never trims a global top-k) is a release test.
+### South African data residency
 
-### South African regions and data residency
+- **Data at rest.** Records, originals, index, audit, logs and backups can stay in South Africa if the chosen cloud offers each service there.
+- **Disaster recovery.** If the provider has only one South African region, the choice is redundancy within it or a second region abroad, which is a cross-border transfer and an Information Officer decision.
+- **Model inference is the hard part.** Which models can be called from a South African endpoint differs by provider and changes, and some services send requests to other regions for capacity unless that is switched off. If inference runs abroad, the transfer rules in section 6 apply.
+- **Organisation decides** what happens if no suitable model runs in the country. My suggestion: `confidential` assistants stay on in-country or self-hosted models (the prototype already limits them to on-device models), and `internal` assistants use an endpoint abroad only with a documented transfer basis, no-retention and no-training terms, and the privacy screen in front.
 
-- **Regions.** Azure has two South African regions (South Africa North, Johannesburg; South Africa West, Cape Town). AWS has one (Africa, Cape Town). Google Cloud has one (Johannesburg). Confirm current regions and, more importantly, which of the services above are offered in them.
-- **Data at rest.** System of record, originals, index, audit, logs and backups can normally be kept in South Africa on all three. Backups, log exports and replicas inherit the same rule.
-- **Disaster recovery.** With two in-country regions, recovery can stay in South Africa. With one, the choices are zone redundancy inside the region (protects against a data-centre failure, not a regional one) or a secondary region abroad, which is a cross-border transfer and an Information Officer decision.
-- **Model inference is the hard part.** Which model families can be called from an in-country endpoint differs by provider and changes over time. Newer models often reach other regions first. Some services route requests to other regions for capacity unless that is switched off. Region availability for each approved model must be confirmed at design time, not assumed from this document. If inference leaves South Africa, the prompt (already screened) crosses the border at that point and section 6 applies.
-- **Fallback when no suitable in-region model exists:** keep `confidential` bots on in-region or self-hosted open models; allow `internal` bots to use an out-of-region endpoint only with a documented transfer basis, no-retention and no-training terms, and the redaction layer in front.
+### Recommended default
 
-### Recommended default for a Microsoft-centric organisation
+For a Microsoft-centred organisation, the Azure column above, with Azure Container Apps (or AKS where that is the standard) and a Teams app as a staff channel. It reuses identity, networking, security operations and procurement the organisation already runs, provided the needed models and services are available in South Africa. Moving to AWS or Google Cloud would replace adapters and infrastructure code, not the answering logic, the checks, the assistant configurations or the evaluation sets.
 
-I would host the service on Azure Container Apps (or AKS where it is the standard), with Azure Database for PostgreSQL and pgvector as the system of record and first search index. I would add Azure AI Search only for a measured need.
+## 4. Many assistants at scale
 
-Azure OpenAI or Foundry models would sit behind API Management as the LLM gateway. Entra ID would handle staff identity, with managed identities for services and Key Vault for secrets. Service Bus and Azure Monitor would handle messaging and monitoring.
+Today an assistant is a folder holding its configuration, instructions, approved-documents list and evaluation questions. The repository has two: the product assistant and a staff-policies assistant restricted to a local model. In production:
 
-For personal information, I would use Azure AI Language PII alongside the existing rules. Document Intelligence would parse scanned documents, and a Teams app would provide a staff channel. This reuses identity, network, security operations and procurement the organisation already runs, and Azure's two in-country regions simplify recovery.
-
-Business logic sits behind Protocols. A move to AWS or Google Cloud would replace adapters (`DocumentRepository`, `VectorIndex`, `Embedder`, model mapping, `PrivacyScreen`) and infrastructure code, not the agent, the evidence checks, the bot configs or the evaluation sets. PostgreSQL is available on all three. Models are reached by `provider:model` through the gateway, and every model change must pass the same evaluation before release.
-
-## 4. Multi-bot platform at scale
-
-A bot remains a folder containing `bot.yaml`, a prompt, a manifest, optional skills and an evaluation file. In production, changes to that folder need owners, review and release gates.
-
-| Concern | How it works in production |
+| Concern | Production |
 |---|---|
-| Bot configs | Held in a configuration repository. A change is a pull request reviewed by the bot owner and the platform team, validated against the schema, and released only after its evaluation set passes |
-| Knowledge | Each bot has its own collections. Documents carry permission groups as well as a collection id; retrieval filters by collection, status and the caller's groups before ranking, so a user never receives an excerpt they could not open themselves |
-| Model policy | Per bot: allowed models from the approved catalogue, budgets per question, default and escalation model |
-| Data classification | Per bot: `public`, `internal`, `confidential`. Classification decides which model endpoints and regions are permitted, whether question text is stored, and retention |
-| MCP servers and skills | A central registry. Each entry has an owner, a security review, the exact tool names allowed, whether tools read or write, where it runs, and its data classification ceiling. Bots opt in by name; a bot cannot reach an unregistered server |
-| Evaluation | Each bot owns a golden set. CI runs it on every change to prompt, model, index or config; release is blocked if it falls below the bot's thresholds |
-| Cost | Every audit record carries bot, model, tokens and cost; dashboards and chargeback are per bot and per business unit |
+| Documents | Each assistant has its own collections; documents also carry permission groups, filtered before ranking, so nobody sees a passage they could not open themselves |
+| Classification | `public`, `internal` or `confidential`, deciding allowed models and regions, whether question text is stored, and retention |
+| Tools from other systems | A register of MCP servers with an owner, a security review and the exact tools allowed. Today `config/mcp_servers.yaml` does this for one read-only demonstration server |
+| Cost | Assistant, model, tokens and cost on every audit record, for reporting per business unit |
 
-**Three example future bots**
-
-| Bot | Reused unchanged | New |
-|---|---|---|
-| Internal policies (HR, conduct, leave) | Service, agent, evidence checks, privacy screen, audit, ingestion, channels | HR policy collection with content owners; `confidential` classification, so in-region models only; staff audience; golden set from HR queries |
-| IT help desk | All of the above, plus the table and calculator tools | Knowledge-base articles via a connector; one registered MCP server that reads ticket status (read-only, reviewed); audience of all staff; a higher volume and a cheaper default model |
-| Claims procedures | All of the above, plus edition scoping and the block/affected-answers process | Procedure documents with strict maker-checker approval; refusal rules for member-specific decisions tightened; health terms expected in questions, so stronger redaction and question text not stored; release gates set by the claims QA lead |
-
-Each new bot is configuration, documents, a golden set and approvals. Code changes are needed only for a new kind of tool, and that goes through the MCP registry review.
+Likely next assistants (internal policies, an IT help desk, claims procedures) each need documents, configuration, an evaluation set and approvals. Code is needed only for a new kind of tool.
 
 ## 5. Security
 
-| Threat | Prototype control | Production control | Residual risk |
+| Threat | Today | Production adds | What remains |
 |---|---|---|---|
-| Prompt injection in documents | Hidden and low-contrast text removed at ingest and recorded as a finding; instruction-like wording flagged; excerpts wrapped as data; no side-effecting tools; every claim must be quoted from an approved source | Same, plus human review of findings before approval and a managed prompt-injection classifier on excerpts | Visible but misleading text in an approved document is answered from. Approval is the control |
-| Prompt injection in user input | Agent has read-only tools only; evidence checks limit output to quoted approved text | Gateway-level injection screening; per-user rate limits; anomaly alerts on refusals and withheld answers | A user can still get an odd but evidence-backed answer; no data or action is gained |
-| Tool or MCP abuse | Central allow-list by tool name; tool output treated as untrusted; arguments screened; a cited tool result is checked like an excerpt and cannot stand in for a document rule | MCP over authenticated HTTP, scoped short-lived tokens, read-only servers by default, security review in the registry, per-tool rate limits and audit | A reviewed tool with a hidden write path. Review and least-privilege credentials on the server side limit it |
-| Data exfiltration through model providers | Privacy screen before any model; egress policy by classification; third-party tracing off | In-region endpoints where available, no-retention and no-training terms, network egress allow-list, DLP on prompts and logs | Unrecognised personal information in free text reaches the provider |
-| Cross-bot leakage | Collection id on every document, chunk and vector; filter in SQL before ranking; tested | Same, plus document permission groups and per-bot service identities with database row-level security | A misconfigured collection assignment. Caught by registry review and isolation tests |
-| Privilege escalation | Role check on every service method; a separate `operator` role for ingest, block, unblock and audit verify and prune | SSO roles, separate operator role for publish, block and audit read; privileged actions audited; no shared accounts | Insider misuse of a legitimate operator role |
-| Poisoned or tampered documents | Approval bound to SHA-256; changed file drops to `pending`; block and affected-answer listing | Maker-checker approval, retention-locked originals, malware scan, isolated parsers with no network and resource limits | A wrong document approved by two people |
-| Audit tampering | Hash chain; `audit verify` detects edits and deletions | Chain head anchored in write-once storage; database writer cannot alter anchors; export to SIEM | An attacker with both database and anchor access |
-| Denial of wallet | Per-question budget on model calls, searches, repairs and wall-clock time | Gateway token quotas per user, bot and month; budget alerts at set fractions; circuit breaker to a cheaper model or to "use the manual process" | A burst within quota still costs money until alerts fire |
-| Supply chain | Pinned lockfile | Dependency and container scanning, signed images, private package mirror, SBOM, model and MCP server provenance in the registry | A compromised upstream release before it is detected |
+| Instructions hidden in documents | Hidden, low-contrast, covered and reversed text removed at intake and recorded; instruction-like wording flagged; no tools that change anything; every claim quoted | A person reviews findings before approval | Visible but misleading text in an approved document |
+| Manipulation through the question | Read-only tools; answers limited to quoted approved text | Gateway screening; per-user rate limits | An odd but evidence-backed answer |
+| Personal information sent to a provider | Screen before any model call; destination policy; third-party tracing off | In-region endpoints where available; no-retention terms | Unrecognised details in free text |
+| One assistant seeing another's documents | Collection on every passage, filtered before ranking; tested | Permission groups; database row-level security | A document put in the wrong collection |
+| Misuse of privileges | Role checked on every call; a separate `operator` role for intake, blocking and audit administration | Roles from single sign-on; privileged actions audited | Insider misuse |
+| Tampered documents or audit log | Approval tied to the fingerprint; hash chain, which someone able to rewrite the whole file could rebuild | Two-person approval; malware scan; latest hash in write-once storage | Collusion |
+| Runaway cost | Per-question limits on model calls, searches, retries and time | Gateway quotas; budget alerts | A burst within quota |
+| Compromised dependency | Pinned lockfile | Dependency and image scanning; signed images | A bad release before detection |
 
-Use private networking for the database, index, object storage and model endpoints, with no public endpoints. Require TLS throughout and encrypt stored data with organisation-managed keys. Services fetch secrets from the key vault through managed identities; configuration and images contain no keys. Ingestion workers run without outbound network access. The service identity of each bot can read only its collections. MCP servers run under their own identities with the narrowest credentials their tools need, and their tokens are scoped to a bot and a principal, so a tool call is always attributable to a person.
+Production also keeps the database, index, storage and model endpoints on private networks, encrypts stored data with organisation-managed keys, keeps secrets in the key vault, and gives intake workers no internet access.
 
 ## 6. POPIA
 
-Keeping data in region or on the device addresses only part of POPIA. The organisation must also own the processing decisions, contracts and procedures set out below.
+This is an engineering view of the Protection of Personal Information Act, not legal advice, and must be confirmed by legal and compliance. The organisation is the responsible party: it decides why and how personal information is processed and stays accountable when a provider does the processing.
 
-The local privacy screen redacts identifiers with a recognisable shape or label: validated South African ID numbers, phone numbers, emails, labelled account and policy numbers, labelled names, dates of birth, and patterns an operator adds. It fails closed if screening fails. Pattern matching will still miss an unlabelled name ("my client Thandi"), a description of someone's illness, or an identifier written in words. Production adds entity recognition (names, addresses, health terms), an in-region redaction service, DLP scanning of stored text and logs, and a labelled test set with recall targets that runs in CI. I would assume some personal information still gets through. Question text therefore stays out of storage by default, and provider contracts must cover that exposure.
+**Removing personal information by pattern is best effort.** Today the screen removes valid South African ID numbers and other 13-digit numbers, phone numbers, email addresses, labelled bank, card, policy, member, claim, employee and passport numbers, labelled dates of birth, names after a label or title ("caller name:", "Mr"), and any patterns an operator adds. It misses an unlabelled name ("my client Thandi"), an address, a description of an illness, a number written in words, and any format it has no rule for. Even with entity recognition added, I would assume some details get through, so production should not store question text by default. Today the product assistant stores the screened question for 30 days; the staff-policies assistant stores only a fingerprint of it and refuses questions containing personal details.
 
-| Condition | What the system does | What the organisation must do |
+**The eight conditions for lawful processing**
+
+| Condition | Today | Organisation must |
 |---|---|---|
-| Accountability | Audit of every question, answer, approval and block; owners recorded per bot and per document | Information Officer accountable; named product owner and content owners; personal information impact assessment before launch |
-| Processing limitation (lawfulness, minimality, justification) | Assistant needs no personal information to answer product questions; screen removes what it can; no access to member or claim systems | Confirm the lawful basis for processing staff and any incidental member data; agent guidance not to enter member details |
-| Purpose specification | Purpose stated per bot; retention per bot; pruning writes a checkpoint | Document purposes and a retention schedule; delete on schedule, including backups and exports |
-| Further processing limitation | Golden sets and review queues use screened text only | Approve any reuse (analytics, model tuning) as compatible with the original purpose, or do not do it |
-| Information quality | Only approved, current editions are searched; superseded editions only on request; blocked documents never | Content owners keep documents current and act on review findings within agreed times |
-| Openness | UI states what the assistant is, that answers come from approved documents, and that details are removed | Update staff privacy notices; tell agents what is recorded and for how long |
-| Security safeguards | Fail-closed screen, egress policy, isolation, hash-chained audit | Security controls in section 5; written operator agreements; breach process |
-| Data subject participation | Audit records are findable by trace id and principal | Process to find, provide, correct or delete a person's records within the statutory process, across database, index, logs and backups |
+| Accountability: ensure all conditions are met | Every question, block and unblock logged; each approved document records its approver | Name accountable owners; complete an impact assessment before launch |
+| Processing limitation: lawful, minimal, justified | Product questions need no personal information; the screen removes what it can; no access to member or claim systems | Confirm the lawful basis for incidental data; instruct staff not to enter member details |
+| Purpose specification: a defined purpose, kept no longer than needed | A stated purpose and retention period per assistant; pruning keeps the audit chain intact | A retention schedule applied to every copy, including backups and provider logs |
+| Further processing limitation: reuse must be compatible | Logged questions are not reused for anything | Approve any reuse, such as analytics or model tuning, or forbid it |
+| Information quality: accurate and up to date | Only approved, current editions searched; blocked documents never | Content owners keep guides current |
+| Openness: tell people what is processed | The app says answers come only from approved documents and that personal information is removed or blocked | Update staff privacy notices |
+| Security safeguards | Fail-closed screen, destination policy, separated assistants, hash-chained audit | Section 5 controls; operator contracts; a breach process |
+| Data subject participation: access, correction, deletion | Audit records findable by trace id and user | A process covering database, index, logs and backups |
 
-**Special personal information.** Disability and funeral questions invite health details ("is a member with cancer covered?"). Health information is special personal information under POPIA, with stricter conditions. The assistant should refuse member-specific medical questions and point to the claims process, health terms should be added to the redaction layer, and question text for such bots should not be stored. Whether any authorisation applies to incidental processing is for the Information Officer to decide.
+**Special personal information** (sections 26 to 33). Health information may be processed only under stricter conditions, and disability and funeral questions invite it ("is a member with cancer covered?"). The assistant should refuse member-specific medical questions, health terms should be added to the screen, and such questions should not be stored. Whether any authorisation applies is for the Information Officer.
 
-**Operators.** Cloud and model providers process personal information on the organisation's behalf. Section 21 requires a written contract that obliges the operator to maintain security measures; the operator must also process only with the organisation's authorisation and notify it of a suspected compromise. This covers the cloud host, the model provider and any managed PII or search service.
+**Operators** (sections 19 to 21). The cloud host, model provider and any managed detection or search service process personal information on the organisation's behalf. Each needs a written contract requiring it to process only as authorised, keep the information confidential, maintain security measures, and report a suspected compromise immediately.
 
-**Cross-border transfers.** Section 72 allows transfer of personal information outside South Africa only on a recognised basis, such as a recipient bound by law, binding corporate rules or an agreement giving adequate protection, or consent. Out-of-region inference, out-of-region disaster recovery and provider support access all count. Transfers of special personal information to countries without adequate protection may also need prior authorisation from the Information Regulator; the Information Officer should confirm.
+**Transfers outside South Africa** (section 72) are allowed only on a recognised basis, such as a recipient bound by law, binding corporate rules or an agreement giving adequate protection, or consent. Inference abroad, recovery sites abroad and provider support access from abroad all count. Special personal information may also need the Information Regulator's prior authorisation.
 
-**Security compromise.** Section 22 requires notification to the Information Regulator and to affected data subjects as soon as reasonably possible after a compromise is discovered. The incident runbook in section 9 includes this step.
+**Security compromises** (section 22) must be reported to the Information Regulator and the people affected as soon as reasonably possible.
 
-**Retention and deletion.** The local implementation has per-bot `retention_days` and a prune that keeps the audit chain intact. Production applies the schedule to every copy, including provider-side logs (contracted to zero retention where possible), backups and SIEM exports.
+**Automated decisions.** POPIA restricts decisions with legal or similarly significant effect made solely by automated means. The assistant informs a trained person and refuses member-specific decisions, which keeps it outside that restriction.
 
-**Automated decisions.** POPIA restricts decisions with legal or similarly significant effect based solely on automated processing. The assistant gives general product information to a trained agent and refuses member-specific decisions, which keeps it outside that restriction by design. This should be stated in the impact assessment.
-
-The Information Officer signs off the impact assessment, data flows and processing locations, operator agreements, transfer basis, retention schedule and incident process before any real data is processed. That role also has authority to pause the service.
+**The Information Officer** is responsible for the organisation's compliance and should sign off the impact assessment, processing locations, operator contracts, transfer basis, retention schedule and incident process before real data is processed, with authority to pause the service.
 
 ## 7. Quality and monitoring
 
-I would monitor each bot separately so a change in one product or model does not disappear in platform-wide totals.
+Each assistant is monitored separately, so a problem in one is not hidden in totals. Measured per assistant and model: outcomes, which checks failed, cost, response time, sections never cited, declined questions (sent to content owners as gaps), and items removed by the screen.
 
-**What is measured**
+**Example service targets**, to agree with the product owner once the pilot gives a baseline:
 
-| Signal | Detail |
-|---|---|
-| Answer outcomes | `answered`, `partial`, `not_found`, `refused`, `withheld`, `error`, counted separately per bot, channel and model |
-| Evidence-check failures | By check (unretrieved label, quote not found, table without row, untraced number, calculation mismatch, stale edition), before and after repair |
-| Retrieval hit rate | Share of golden questions whose gold section is retrieved |
-| Citation rate | Per document and section: what is relied on, and what is never cited |
-| Content gaps | Clusters of `not_found` questions, reported to content owners |
-| Latency | p50, p95, p99 end to end, and per stage (screen, retrieval, model, checks) |
-| Tokens and cost | Per question, per bot, per model, per day |
-| Index freshness | Time from approval to searchable; time from block to excluded |
-| Drift | Model version, prompt hash, embedder name and bot config version on every audit record; alerts when any changes outside a release |
-| Privacy | Redactions by category; blocked requests; screen failures |
-
-**Example SLOs** (to be agreed with the product owner after the pilot baseline)
-
-| SLO | Example target |
+| Target | Example |
 |---|---|
 | Availability in business hours | 99.5% |
-| End-to-end latency | p95 under 15 seconds for a full answer; first visible progress under 2 seconds |
-| Errors | under 1% of requests over a rolling hour |
-| Withheld answers | under 5% of answerable golden questions |
-| Golden-set retrieval hit rate | at least 95% |
-| Block takes effect | within 1 minute, verified by a probe search |
-| Audit write | 100%; no answer returned without a record |
+| Response time | 95% of answers within 15 seconds |
+| Errors | under 1% of requests |
+| Withheld answers | under 5% of answerable evaluation questions |
+| Search finds the expected section | at least 95% of evaluation questions |
+| Blocking takes effect | within 1 minute |
 
-**Alerts.** Error or latency SLO burn; withheld rate up sharply; a fall in retrieval hit rate on the nightly golden run; a document suddenly dominating citations; audit verify failure; screen failures; spend at 50%, 80% and 100% of the monthly budget; any change of model version not made by a release.
+**Alerts** fire on targets at risk, a sharp rise in withheld answers, a fall in search accuracy on a nightly evaluation run, a failed audit verification, and spend at 50%, 80% and 100% of budget.
 
-The human review queue takes agent flags (one click, trace id attached, no member details), every withheld answer and a random sample of passed answers (for example 2% in pilot). Reviewers mark each as correct, incomplete, wrong or should-have-declined. Confirmed errors become golden-set cases with the condition that was missed. Reviewers assess whether an answer reads its evidence faithfully. Code checks the quotes and numbers but can miss a dropped condition.
+**Human review.** Reviewers see every flagged or withheld answer and a random sample of the rest (say 2% in the pilot), and judge whether each reads its quotes faithfully, which the code cannot. Confirmed errors become evaluation questions.
 
-Before release, a change to a prompt, model, embedder, retrieval setting, bot config or index runs the bot's golden set. It ships only if correct and correctly-declined rates meet the bot's thresholds and no previously passing material case regresses. The result is stored with the release.
-
-Pin model versions through the gateway. Before adopting a new version, run the golden set and a shadow sample of recent screened traffic, compare outcome mix, cost and latency, then roll out to a small share of traffic before switching. Keep the previous version available until the provider retires it. When a provider announces retirement, the same process runs early.
+**Change control.** Any change to instructions, model, search settings or configuration ships only if the assistant's evaluation meets its thresholds and nothing that passed before now fails. Model versions are pinned at the gateway.
 
 ## 8. Cost and scale
-
-**Cost per question**
 
 ```text
 cost per question =
     sum over model calls ( input tokens x input price + output tokens x output price )
-  + query embedding
-  + retrieval share (database or search service, per query)
-  + infrastructure share (hosting, gateway, monitoring, divided by volume)
-  + review share (sampled human review time, divided by volume)
+  + embedding the question
+  + share of database or search service
+  + share of hosting, gateway and monitoring
+  + share of sampled human review time
 ```
 
-An answer takes several model calls (search, table lookup, final answer, and sometimes a repair). The measured local figure is about US$0.0015 on Claude Haiku 5.5 and US$0.027 on Claude Sonnet 5.5, model tokens only, on the evaluation questions. Production cost will differ with the contracted price, model choice, retry rate and question mix.
+**Measured.** On the 15 test questions the default model, Claude Haiku 5.5, used roughly 12 000 input and 600 output tokens over two or three model calls: about US$0.0015 a question in model charges at list prices on 23 November 2026 (`config/pricing.yaml`). Claude Sonnet 5.5 cost about US$0.027. Production cost will differ with contracted prices, the model chosen, the retry rate and the real mix of questions.
 
-**Changes I would try, in order**
-
-1. **Smaller model for routine questions**, escalating to a larger one when evidence checks fail or the question needs a table calculation. Gate by golden set per model.
-2. **Prompt caching** of the fixed system prompt, tool definitions and skills, where the provider supports it.
-3. **Reranking and tighter excerpts** to cut the context sent to the model without losing conditions. Measure with the "conditions that must not be dropped" in the golden set.
-4. **Response caching** for repeated questions, keyed on screened question, bot, config version and the set of current document hashes, so any publish or block invalidates it.
-5. **Budgets** per question and per bot at the gateway, so a loop or abuse cannot run up cost.
-
-For capacity planning, I would start with the assumptions below and replace them with real call-centre volumes.
+**Capacity, on assumed volumes.** Every volume figure here is an assumption, to be replaced with real call-centre data.
 
 | Assumption | Value |
 |---|---|
-| Agents using the assistant | 500 |
-| Questions per agent per day | 20 |
+| Staff using the assistant | 500 |
+| Questions per person per day | 20 |
 | Working day | 8 hours |
-| Peak-hour factor over average | 3 |
-| Model calls per question | 4 |
+| Busiest hour against the average | 3 times |
+| Model calls per question | 3 (measured: two or three) |
 
-That gives 10,000 questions a day, an average of about 0.35 per second and a peak near 1 per second. At 4 model calls per question the gateway must sustain roughly 4 calls per second, or about 250 a minute, at peak; the token-per-minute quota on the model deployment must cover peak calls times average tokens per call, which is the first limit to check. With answers taking 10 to 15 seconds, about 15 questions are in flight at peak, which a handful of stateless service instances handles. Daily model cost is roughly 10,000 x about US$0.0015 on Claude Haiku 5.5 and US$0.027 on Claude Sonnet 5.5 before caching and routing savings. Retrieval over a few thousand sections is not the bottleneck at this scale; the model quota and provider latency are.
+That gives 10 000 questions a day and about 1 a second in the busiest hour, which means about 3 model calls a second and roughly 750 000 tokens a minute. The model provider's token quota is therefore the first limit to check; search over a few thousand sections is not a bottleneck. At 4 to 15 seconds an answer, at most about 15 questions are in progress at once, which a few copies of the service handle. Model charges would be about US$15 a day on Claude Haiku 5.5, or US$270 on Claude Sonnet 5.5.
+
+**Savings to try**, each checked against the evaluation: a smaller model for routine questions, escalating when the checks fail; prompt caching of the fixed instructions (the list prices above exclude it); and caching answers to repeated questions, cleared by any publish or block.
 
 ## 9. Rollout
 
-I would move from approval to shadow use, then a supervised pilot. Expansion depends on answer quality and whether agents save time after checking the evidence.
-
-| Stage | Entry criteria | What happens | Exit criteria |
+| Stage | Entry | What happens | Exit |
 |---|---|---|---|
-| 0. Approval | Business case; named owners | Impact assessment, data flows and processing locations agreed; operator agreements signed; security review; content owners approve current documents; golden set built from 100 or more real anonymised questions with agreed answers | Information Officer and security sign-off |
-| 1. Shadow | Stage 0 complete; production environment live | Assistant answers real screened questions in the background; agents do not see answers; reviewers compare with what agents actually said | Go/no-go thresholds met on the shadow sample |
-| 2. Supervised pilot | Shadow thresholds met | One team of 10 to 20 trained agents; every answer shows its quotes; agents check the source before relaying amounts, deadlines or conditions; daily review of flags in week one | Thresholds held for four weeks; agent time to a checked answer improved against the baseline |
-| 3. Expansion | Pilot exit; load test and restore drill passed | Further teams, then further products or bots, each a controlled release with its own golden set | Ongoing SLOs and review metrics |
+| 0. Approval | Business case; named owners | Impact assessment; operator contracts; security review; current guides approved; 100 or more real, anonymised questions with agreed answers | Information Officer and security sign-off |
+| 1. Shadow | Production environment live | The assistant answers real screened questions unseen; reviewers compare its answers with what staff said | Thresholds below met |
+| 2. Supervised pilot | Shadow thresholds met | One team of 10 to 20 trained staff, who check the quoted source before giving amounts, deadlines or conditions | Thresholds held for four weeks; time to a checked answer better than the baseline |
+| 3. Expansion | Load test and restore drill passed | Further teams, then further assistants, each with its own evaluation set | Targets maintained |
 
-**Accountable roles**
+**Roles.** The *product owner* (a call-centre or claims lead) owns scope, go or no-go and benefit measurement. *Content owners* keep each guide accurate and approve each version. The *Information Officer* owns POPIA sign-off, operator and transfer decisions and breach notification. Both can pause the service. *Security* approves models and tools. The *platform team* runs the service, its monitoring, incidents and cost.
 
-| Role | Accountable for |
-|---|---|
-| Product owner (call-centre or claims lead) | Scope, go/no-go, benefit measurement, authority to pause |
-| Content owners | Document accuracy, approval of each version, response to content gaps and reported errors |
-| Information Officer | Impact assessment, POPIA sign-off, transfer and operator decisions, breach notification |
-| Security | Threat model, MCP and model approvals, penetration test, access reviews |
-| Operations (platform team) | Availability, monitoring, incident response, cost, model upgrades |
+**Example go or no-go thresholds**, to agree, reported with sample sizes:
 
-**Example go/no-go thresholds** (starting points to agree, with sample sizes shown alongside):
+- No confirmed wrong amount, waiting period, deadline or eligibility condition presented as supported in the last two weeks of the stage.
+- At least 95% of answerable evaluation questions correct with the material conditions present, and at least 95% of out-of-scope questions declined.
+- No raw South African ID number in any stored record.
+- The service targets in section 7 met.
 
-- No confirmed wrong benefit amount, waiting period, deadline or eligibility condition presented as supported, in the last two weeks of the stage.
-- At least 95% of answerable golden questions correct or partially correct with the material conditions present; at least 95% of out-of-scope questions correctly declined.
-- No raw South African ID number in any stored record, found by DLP scan.
-- Withheld rate under 5%; error rate under 1%; p95 latency within target.
+**Incidents.** A reported wrong answer is checked against its source: a wrong guide is blocked until corrected; a misreading joins the evaluation set and the fix must pass it. A withdrawn guide is blocked and the list of answers that cited it goes to its owner. Suspected exposure of personal information goes to the Information Officer, who decides on notification. In an outage the assistant says "use the usual process" and never falls back to an unapproved model.
 
-**Incident runbook**
-
-| Trigger | Steps |
-|---|---|
-| Wrong answer reported | 1. Agent flags with trace id. 2. Reviewer confirms against the cited source. 3. If the document is wrong: content owner corrects, document is blocked meanwhile. 4. If the reading is wrong: add the case to the golden set, fix through prompt, skill or check, re-run gates. 5. If material, notify the product owner and pause the affected topic. |
-| Document withdrawn | 1. Operator blocks the document (excluded from search at once). 2. Probe search confirms exclusion. 3. List every past answer that cited it (the prototype's `affected_answers`). 4. Content owner decides whether agents or customers need to be told. 5. Replacement goes through normal approval. |
-| Suspected personal information exposure | 1. Restrict access to the affected records. 2. Involve the Information Officer and incident team. 3. Assess and, where required, notify the Regulator and data subjects. 4. Fix the screen gap and add the case to the privacy test set. |
-| Provider or service outage | Show "use the usual process" and route agents to existing knowledge sources; do not fail over to an unapproved model. |
-
-I would stop rollout for an unresolved material wrong answer missed by the checks and review, or for personal information stored locally or by a provider against policy. Missing operator agreements or a lawful transfer basis for the model region would also stop it. The same applies if content owners cannot maintain approved, current documents, or agents save no measurable time once source checking is included.
+**What would stop the rollout:** an unresolved material wrong answer that the checks and review missed; personal information stored, by us or a provider, against policy; no operator contract or lawful transfer basis for where the model runs; content owners unable to keep guides current; or no measurable time saved once staff check the source.
 
 ## 10. Decisions and open questions
 
 | Decision | Why | Revisit when |
 |---|---|---|
-| PostgreSQL with pgvector as system of record and first index | One store, one backup, permission filters in SQL, available on every cloud | Measured latency or volume exceeds it |
-| LLM gateway in front of all models | Quotas, metering, routing and one place to enforce region and terms | Never removed; product may change |
-| Evidence checks stay in application code, independent of model and channel | Model changes are measured releases, not trust exercises | Not expected to change |
-| Bots as reviewed configuration with golden-set gates | New use cases without new code, under the same controls | A bot needs a new kind of tool |
-| Question text not stored by default | Pattern and entity redaction are best effort | A specific, approved purpose with a retention period |
-| Azure as default host for a Microsoft-centric organisation | Reuses identity, network, operations; two in-country regions | Model availability or cost in region favours another provider |
+| PostgreSQL with pgvector as document record and first index | One store, one backup, permission filters in the query, on every cloud | Measured load exceeds it |
+| A gateway in front of all models | Quotas, metering, and one place to enforce region and contract terms | The product may change; the gateway stays |
+| Evidence checks in code, independent of model and channel | A model change is a measured release, not an act of trust | Not expected |
+| Question text not stored by default | Removing personal information is best effort | An approved purpose with a retention period |
+| Azure as default for a Microsoft-centred organisation | Reuses identity, network and operations | Needed models or services are not available in South Africa |
 
 **Questions for the organisation**
 
-1. Is hosted model inference outside South Africa acceptable for `internal` bots, and on what transfer basis? Which models are already approved?
-2. Who owns each product guide, and how fast can they approve a new version or withdraw a wrong one?
-3. Which channel comes first: agent desktop, Teams, or an existing knowledge tool?
-4. What is the current baseline: time to a checked answer, error rate, escalations?
-5. What retention applies to assistant audit records under the existing schedule?
-6. Is there an existing LLM gateway, PII service or document management system the platform must use?
-7. Which other teams have candidate bots, and what data classification would each carry?
-8. What budget ceiling and chargeback model apply per business unit?
+1. Is model inference outside South Africa acceptable for `internal` assistants, and on what transfer basis? Which models are already approved?
+2. Who owns each product guide, and how quickly can they approve a new version or withdraw a wrong one?
+3. Which channel comes first: the call-centre desktop, Teams, or an existing knowledge tool?
+4. What is today's baseline: time to a checked answer, error rate, escalations?
+5. What retention applies to assistant records under the existing schedule?
+6. Is there an existing model gateway, detection service or document management system to use?
+7. Which other teams want assistants, and with what classification?
+8. What budget ceiling and charging model apply per business unit?
