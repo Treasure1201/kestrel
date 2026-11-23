@@ -1,0 +1,54 @@
+{
+  "grader_version": "1",
+  "models": [
+    "anthropic:claude-haiku-5-5"
+  ],
+  "runs": [
+    1
+  ],
+  "questions": 10,
+  "records": 10,
+  "ungraded": 0,
+  "grades": {
+    "correct": 8,
+    "partially_correct": 0,
+    "incorrect": 1,
+    "correctly_declined": 1,
+    "incorrectly_declined": 0,
+    "withheld": 0,
+    "error": 0
+  },
+  "outcomes": {
+    "answered": 9,
+    "not_found": 1
+  },
+  "withheld": 0,
+  "errors": 0,
+  "retrieval_misses": 0,
+  "retrieval_miss_ids": [],
+  "latency_ms": {
+    "median": 4471.0,
+    "p95": 6799.0,
+    "max": 6799.0
+  },
+  "cost_usd": {
+    "total": 0.014934,
+    "per_question": 0.001493,
+    "unpriced_records": 0
+  },
+  "tokens": {
+    "input": 116075,
+    "output": 6651
+  },
+  "model_calls": 26,
+  "meta": {
+    "bot": "kestrel-products",
+    "question_set": "reworded",
+    "model": "anthropic:claude-haiku-5-5",
+    "model_override": "anthropic:claude-haiku-5-5",
+    "gold_file": "C:\\Users\\treas\\source\\kestrel\\eval\\reworded.yaml",
+    "questions_file": "C:\\Users\\treas\\source\\kestrel\\eval\\reworded.yaml",
+    "started_at": "2026-11-23T02:28:43.759746+00:00",
+    "finished_at": "2026-11-23T02:29:34.316115+00:00"
+  }
+}

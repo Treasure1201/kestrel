@@ -1,6 +1,6 @@
 # Kestrel Assistant
 
-A question-answering assistant over the six Kestrel Assurance documents. It answers only from approved documents, quotes the passage or table row behind every claim, uses a calculator for amounts, and says so when the documents are silent. Plain code checks every quote, number and calculation before the answer is shown. It runs locally as a command line, a Streamlit app or an MCP server, with Anthropic, OpenAI, Ollama Cloud or local Ollama models. Headline result: [PRIMARY MODEL RESULT].
+A question-answering assistant over the six Kestrel Assurance documents. It answers only from approved documents, quotes the passage or table row behind every claim, uses a calculator for amounts, and says so when the documents are silent. Plain code checks every quote, number and calculation before the answer is shown. It runs locally as a command line, a Streamlit app or an MCP server, with Anthropic, OpenAI, Ollama Cloud or local Ollama models. Headline result: Claude Haiku 5.5 answered all 13 answerable test questions correctly and declined the 2 unanswerable ones in each of three runs, at about US$0.0015 a question (automatic grades; my own assessment of each answer is in the workbook).
 
 ## Run it
 
@@ -15,7 +15,7 @@ uv run kestrel ask "What is the group life free cover limit for a scheme with 32
 uv run streamlit run app/streamlit_app.py     # http://localhost:8501
 uv run kestrel mcp                   # MCP server on stdio; client config in docs/DEMO.md
 uv run python -m eval.run_eval       # the 15 test questions; results in results/<timestamp>_<model>/
-uv run pytest -q                     # [TEST COUNT] tests, offline
+uv run pytest -q                     # 874 tests, offline
 ```
 
 Without uv: in a Python 3.12 virtual environment, `pip install -r requirements.txt` then `pip install -e . --no-deps`, and drop `uv run`. The first ingest downloads the embedding model (`bge-small-en-v1.5`) once; after that only the chat model needs the network. `kestrel ask --trace` shows every step; `kestrel --help` lists all commands.
@@ -58,13 +58,23 @@ DOCX, PDF and XLSX are parsed with their structure: headings, numbered sections,
 
 ## Evaluation: results and what the failures taught
 
-[RESULTS TABLE]
+Automatic grades on the 15 test questions (13 answerable, 2 not), from `results/report.md`:
 
-Reworded set: [REWORDED SET RESULT]. Retrieval without a model: [HIT RATE].
+| Model | Runs | Correct | Correctly declined | Partial, incorrect, withheld or error | Cost per question | Median time |
+|---|---|---|---|---|---|---|
+| Claude Haiku 5.5 (default) | 3 | 39 of 39 | 6 of 6 | 0 | US$0.0015 | 4.3 s |
+| Claude Sonnet 5.5 | 1 | 13 of 13 | 2 of 2 | 0 | US$0.029 | 5.9 s |
+| OpenAI `gpt-6.1-sol` | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 6.5 s |
+| Kimi `kimi-k3.1-pro` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 13.9 s |
+| DeepSeek `deepseek-v4.1-flash` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 4.4 s |
+| `gpt-oss:20b` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 6.4 s |
+| `gpt-oss:20b` (local Ollama) | 1 | 13 of 13 | 2 of 2 | 0 | no API charge | 3.5 s |
+
+Reworded set: on Claude Haiku 5.5, 8 graded correct, 1 correctly declined and 1 graded incorrect. The "incorrect" one is a grader false alarm: the answer (R65 000) is right, but the gold file forbade the figure R60 000, which is also the legitimate balance in the sum. I left that gold file as written. Retrieval without a model: the section an answer needs ranked first for 13 of 13 test questions. On the reworded set it ranked first for 7 of 9 and in the top six for 8 of 9; one paraphrase ("highest amount ... insured for") shares no words with "Maximum cover" and ranked seventh, though the agent still answered it by searching again.
 
 Each model's first run was kept before any fix. Claude Sonnet 5.5 failed all 15 questions because the provider rejected a forced tool choice; a general retry fixed it. Claude Haiku 5.5 had two answers withheld: one cited a whole table instead of its row, one wrote 0.75 where the source said 75%. Both were fixed in general code, not per question. The automatic grader marked a correct answer wrong for saying a target was "not a guaranteed time", so a person reviews every answer and that review fills the workbook.
 
-The checks prove the quotes and numbers are real, not that the sentence reads the quote faithfully: an answer can still drop a condition such as "working days", so the gold file lists conditions that must be kept. The 15 questions were also the development set, so they flatter the system; ten reworded questions written before the first run are the nearest independent check. Adversarial set of hidden instructions: [ADVERSARIAL RESULT]. Details: [docs/EVALUATION.md](docs/EVALUATION.md).
+The checks prove the quotes and numbers are real, not that the sentence reads the quote faithfully: an answer can still drop a condition such as "working days", so the gold file lists conditions that must be kept. The 15 questions were also the development set, so they flatter the system; ten reworded questions, written without sight of any model answer, are the nearest independent check. Adversarial set of hidden instructions: of 21 hiding techniques across DOCX, PDF, XLSX and Markdown, 20 are detected, all 18 planted instructions that should be removed are kept out of search, and none of 6 clean controls is flagged. The miss is a visible instruction with no AI-directed wording. In 21 attack questions each on Claude Haiku 5.5 and local `gpt-oss:20b`, no answer followed a planted instruction (attack run made before the last two scanner fixes). Details: [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ## Production: security, POPIA, monitoring, scale
 
@@ -84,7 +94,7 @@ A bot is a folder: `bot.yaml` (audience, documents, tools, model and privacy pol
 
 ## Cost per question
 
-Measured from token counts at list prices in `config/pricing.yaml`: [COST PER QUESTION]. A question takes several model calls (search, table lookup, answer, sometimes a repair). Local Ollama has no API charge. The whole build and evaluation cost [TOTAL API SPEND] in API fees.
+Measured from token counts at list prices in `config/pricing.yaml`: US$0.0015 on Claude Haiku 5.5 (about 11 000 input and 600 output tokens) and US$0.029 on Claude Sonnet 5.5. The OpenAI and Ollama Cloud models have no price in the config, so their cost is reported as unknown rather than guessed. A question takes several model calls (search, table lookup, answer, sometimes a repair). Local Ollama has no API charge. The whole build and evaluation cost roughly US$3 on Anthropic by token count, plus unpriced OpenAI usage and an Ollama Cloud subscription in API fees.
 
 ## Assumptions
 

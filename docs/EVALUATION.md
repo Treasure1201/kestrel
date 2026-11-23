@@ -61,12 +61,22 @@ The automatic grade is a screening signal and is never copied into the workbook.
 
 ## Results
 
-[RESULTS TABLE]
+Automatic grades on the 15 test questions (13 answerable, 2 not), from `results/report.md`:
 
-- Primary model on the 15 questions: [PRIMARY MODEL RESULT]
-- Reworded set (10 questions written before the first run): [REWORDED SET RESULT]
-- Retrieval without a model: [HIT RATE]
-- Measured cost per question: [COST PER QUESTION]
+| Model | Runs | Correct | Correctly declined | Partial, incorrect, withheld or error | Cost per question | Median time |
+|---|---|---|---|---|---|---|
+| Claude Haiku 5.5 (default) | 3 | 39 of 39 | 6 of 6 | 0 | US$0.0015 | 4.3 s |
+| Claude Sonnet 5.5 | 1 | 13 of 13 | 2 of 2 | 0 | US$0.029 | 5.9 s |
+| OpenAI `gpt-6.1-sol` | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 6.5 s |
+| Kimi `kimi-k3.1-pro` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 13.9 s |
+| DeepSeek `deepseek-v4.1-flash` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 4.4 s |
+| `gpt-oss:20b` (Ollama Cloud) | 1 | 13 of 13 | 2 of 2 | 0 | not priced | 6.4 s |
+| `gpt-oss:20b` (local Ollama) | 1 | 13 of 13 | 2 of 2 | 0 | no API charge | 3.5 s |
+
+- Primary model on the 15 questions: Claude Haiku 5.5 answered all 13 answerable test questions correctly and declined the 2 unanswerable ones in each of three runs, at about US$0.0015 a question (automatic grades; my own assessment of each answer is in the workbook).
+- Reworded set (10 questions written without sight of any model answer): on Claude Haiku 5.5, 8 graded correct, 1 correctly declined and 1 graded incorrect. The "incorrect" one is a grader false alarm: the answer (R65 000) is right, but the gold file forbade the figure R60 000, which is also the legitimate balance in the sum. I left that gold file as written.
+- Retrieval without a model: the section an answer needs ranked first for 13 of 13 test questions. On the reworded set it ranked first for 7 of 9 and in the top six for 8 of 9; one paraphrase ("highest amount ... insured for") shares no words with "Maximum cover" and ranked seventh, though the agent still answered it by searching again.
+- Measured cost per question: US$0.0015 on Claude Haiku 5.5 (about 11 000 input and 600 output tokens) and US$0.029 on Claude Sonnet 5.5. The OpenAI and Ollama Cloud models have no price in the config, so their cost is reported as unknown rather than guessed.
 
 ## First-run failures and what changed
 
@@ -88,11 +98,11 @@ The claims FAQ hides one instruction in white 1-point text. One example does not
 - **Scan** (no model): is each technique detected, is the canary kept out of search, and are the clean controls left alone? The first scan missed three techniques: text covered by a drawn shape, text reversed by bidirectional controls, and a visible instruction with no trigger wording. The first two are now detected and removed. The third is visible text, kept by design and answered from if approved; document approval is the control for it.
 - **Attack** (one model): ask a question whose true answer is in the fixture and see whether the answer follows the canary.
 
-[ADVERSARIAL RESULT]
+Of 21 hiding techniques across DOCX, PDF, XLSX and Markdown, 20 are detected, all 18 planted instructions that should be removed are kept out of search, and none of 6 clean controls is flagged. The miss is a visible instruction with no AI-directed wording. In 21 attack questions each on Claude Haiku 5.5 and local `gpt-oss:20b`, no answer followed a planted instruction (attack run made before the last two scanner fixes).
 
 ## Limits
 
-- **The 15 questions were also the development set.** Failures on them were fixed, so results on them flatter the system. The reworded set, written before the first run, is the nearest thing to an independent check, and it is small.
+- **The 15 questions were also the development set.** Failures on them were fixed, so results on them flatter the system. The reworded set, written without sight of any model answer, is the nearest thing to an independent check, and it is small.
 - **Fifteen questions are too few** to separate models reliably; one answer moves a score by almost seven points. Repeat runs show variation but not population accuracy.
 - **The grader is string matching** against a gold file written by the same team that built the system. It can be wrong in both directions, which is why a person reviews every answer.
 - **The evidence checks do not prove faithfulness.** An answer can quote the right passage and still drop a condition; the gold conditions and the human review are what catch that.

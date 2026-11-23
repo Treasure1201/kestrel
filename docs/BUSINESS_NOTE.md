@@ -12,7 +12,7 @@ Agents ask a question about group life, disability or funeral cover. The assista
 
 ## How much to trust it
 
-Every answer shows its source passage, and the system checks that the quote really is in a current, approved guide and that any numbers add up. If the checks fail, the answer is held back and the agent is pointed to the sections to read. On the test questions: [RESULTS SUMMARY].
+Every answer shows its source passage, and the system checks that the quote really is in a current, approved guide and that any numbers add up. If the checks fail, the answer is held back and the agent is pointed to the sections to read. On the 15 test questions it answered all 13 that the documents cover and correctly said "the documents do not say" for the other 2, in every run.
 
 The checks prove the evidence is real, not that the answer reads it correctly, so people still review a sample. ID and phone numbers are removed from questions, but not every name or health detail will be caught: agents should leave member details out.
 

@@ -1,0 +1,54 @@
+{
+  "grader_version": "1",
+  "models": [
+    "openai:gpt-6.1-sol"
+  ],
+  "runs": [
+    1
+  ],
+  "questions": 15,
+  "records": 15,
+  "ungraded": 0,
+  "grades": {
+    "correct": 13,
+    "partially_correct": 0,
+    "incorrect": 0,
+    "correctly_declined": 2,
+    "incorrectly_declined": 0,
+    "withheld": 0,
+    "error": 0
+  },
+  "outcomes": {
+    "answered": 13,
+    "not_found": 2
+  },
+  "withheld": 0,
+  "errors": 0,
+  "retrieval_misses": 0,
+  "retrieval_miss_ids": [],
+  "latency_ms": {
+    "median": 6468.0,
+    "p95": 20977.0,
+    "max": 20977.0
+  },
+  "cost_usd": {
+    "total": null,
+    "per_question": null,
+    "unpriced_records": 15
+  },
+  "tokens": {
+    "input": 90909,
+    "output": 3347
+  },
+  "model_calls": 38,
+  "meta": {
+    "bot": "kestrel-products",
+    "question_set": "test",
+    "model": "openai:gpt-6.1-sol",
+    "model_override": "openai:gpt-6.1-sol",
+    "gold_file": "C:\\Users\\treas\\source\\kestrel\\bots\\kestrel-products\\eval\\gold.yaml",
+    "questions_file": "C:\\Users\\treas\\source\\kestrel\\eval\\KA_Test_Questions.xlsx",
+    "started_at": "2026-11-23T02:18:19.542783+00:00",
+    "finished_at": "2026-11-23T02:20:15.226410+00:00"
+  }
+}

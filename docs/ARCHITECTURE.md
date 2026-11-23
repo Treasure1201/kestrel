@@ -293,7 +293,7 @@ Details and commands are in [EVALUATION.md](EVALUATION.md).
 - Automatic grading against a gold file is kept separate from the human assessment column; both are reported.
 - The gold file holds, per question: the expected status, the facts that must appear, the **conditions that must not be dropped** (for example "lower of", "working days", "accidental death is covered immediately"), statements that must not appear, and the section that should be cited. This is where answer faithfulness is measured.
 - Outcomes are counted separately: correct, partially correct, incorrect, correctly declined, incorrectly declined, withheld by the evidence checks, error, and retrieval miss (the gold section was never retrieved).
-- A set of ten reworded questions, written before the first run, is the nearest thing to an independent check, since the 15 questions were also the development set.
+- A set of ten reworded questions, written without sight of any model answer, is the nearest thing to an independent check, since the 15 questions were also the development set.
 - An adversarial set of 21 fixtures with hidden instructions measures the scanner and whether a model follows a planted instruction.
 
 ## 11. Decisions and trade-offs
