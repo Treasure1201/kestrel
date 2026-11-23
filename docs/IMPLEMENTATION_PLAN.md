@@ -1,6 +1,6 @@
 # Kestrel Assistant: implementation plan
 
-Status: proposed, awaiting sign-off. Design: [DESIGN.md](DESIGN.md).
+Status: the plan as executed, kept as the record of how the work was organised. What was built: [ARCHITECTURE.md](ARCHITECTURE.md). What changed along the way is listed at the end.
 
 ## How the work is organised
 
@@ -160,3 +160,14 @@ A second model reviews the code for security and correctness. A fresh clone is s
 8. Candidate review and submission.
 
 Each integration is a commit, so the commit history is the record of time spent.
+
+## What changed during the build
+
+- **Contracts and service are packages.** WP0 wrote the contracts as `src/kestrel/contracts/` (one module per area, imported as `kestrel.contracts`) rather than one `contracts.py`, to keep files under 500 lines; WP4 likewise built `src/kestrel/service/` rather than `service.py`.
+- **WP13 UI data** (added): answer steps, audit reasons, document and finding counts, edition comparison without a model, and retrieval hit rates at 1, 3 and 6 without a model, so the app and the evaluation could show them.
+- **WP14 Hardening** (added): approved MCP tool results made citable as evidence; `operator` made its own role instead of reusing `staff`; years treated as content when a collection has only one edition; the scanner extended to text covered by a drawn shape and text reversed by bidirectional controls, after the adversarial set found them; `--questions` accepts a bot's gold file.
+- **WP15 UI rework** (added): the Streamlit app reworked after the candidate's review of the first build (scrolling, readability of the evidence panel, colour scheme).
+- **Adversarial evaluation** (added to WP9): 21 fixtures with hidden instructions in every format, a scan evaluation and an attack evaluation per model.
+- **Skills off for the product bot.** The two skills were built and measured; they changed no grade on the test questions and cost about a third more input tokens, so `kestrel-products` ships with `skills: []`. The staff bot keeps its skill.
+- **Model matrix.** Development runs covered Claude Haiku 5.5 and Claude Sonnet 5.5 (Anthropic), GPT-6.1 Sol (OpenAI), Kimi K3.1 Pro, DeepSeek V4.1 Flash and gpt-oss:20b (Ollama Cloud), and gpt-oss:20b on local Ollama. The tested list is in `config/models.yaml`.
+- **Evidence-check wording.** The checks are reported as "evidence checks passed", never "verified", following the independent design review.

@@ -85,6 +85,6 @@ uv run python -m eval.run_eval --bot staff-policies --set reworded --gold bots/s
 
 ## Things to know
 
-- A question containing a full date ("11 March 2026") or a bare year is answered with a request to clarify whether it means an edition. Write dates without the year, or say "as of 2026-03-11".
-- A number that comes only from an MCP tool (for example a working-day count) is not in any cited excerpt, so the evidence checks reject it and a `withhold` bot hides or drops it. Quote the policy rule; treat the tool result as context.
-- The `staff` role is also the operator role (ingest, block, audit). Choose a different audience role for a bot that operators should not automatically see.
+- A full date ("11 March 2026") or a bare year in a question is read as ordinary content when every document family in the bot's collections has one edition, as in `staff-policies`. Once a family has two approved editions, such a question gets a request to clarify whether it means an edition; say "as of 2026-03-11" or "under the 2026 edition" to choose one.
+- A result from an approved MCP tool is labelled `t1`, `t2`, ... and can be cited like an excerpt: its quote must be word for word and its numbers (for example a working-day count) then count as evidence. The policy rule itself still needs a citation of a document excerpt.
+- Operator actions (ingest, block, unblock, audit verify and prune) need the separate `operator` role. No bot audience, including `staff`, grants them.
