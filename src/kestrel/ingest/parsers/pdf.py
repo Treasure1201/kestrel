@@ -9,6 +9,11 @@ Headings are inferred from type size (clearly larger than the body size) or from
 bold line that starts with a section number. Running headers and footers (lines in
 the top or bottom margin band of a page) are skipped. Text outside the page is kept
 with its position so the scanner can report it; it is never silently dropped.
+
+Filled shapes are judged by paint order (PyMuPDF's `seqno`, shared by drawings and the
+text trace): a shape painted before a text span and behind it is the span's background
+(so light text on a dark table header is visible), while an opaque shape painted after
+the span and covering it hides it, and the span is marked `covered`.
 """
 
 from __future__ import annotations
@@ -33,6 +38,10 @@ MARGIN_FRACTION = 0.07
 """Top and bottom band of each page treated as running header or footer."""
 HEADING_SIZE_RATIO = 1.2
 """A line at least this much larger than the body size is a heading."""
+MIN_COVER_OPACITY = 0.95
+"""A shape drawn over text hides it only when it is (nearly) opaque."""
+MIN_COVERED_FRACTION = 0.5
+"""...and covers at least this share of the text's box (a thin rule line over text does not)."""
 _NUMBERED = re.compile(r"^\s*(\d+(?:\.\d+)*)\.?\s+\S")
 _BOLD_FLAG = 16
 
@@ -60,6 +69,28 @@ def _overlaps(a: Sequence[float], b: Sequence[float]) -> bool:
     return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
 
 
+@dataclass(frozen=True)
+class _Fill:
+    """A filled shape: its area, box, colour, paint order (`seqno`, None when unknown) and opacity."""
+
+    area: float
+    box: Box
+    color: str
+    seqno: int | None
+    opacity: float
+
+
+def _area(box: Sequence[float]) -> float:
+    return max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
+
+
+def _covered_fraction(span: Sequence[float], shape: Sequence[float]) -> float:
+    """How much of the span's box the shape's box covers, from 0 to 1."""
+    overlap = (max(span[0], shape[0]), max(span[1], shape[1]), min(span[2], shape[2]), min(span[3], shape[3]))
+    whole = _area(span)
+    return _area(overlap) / whole if whole > 0 else 0.0
+
+
 def _hex(color: int) -> str:
     return f"{(color >> 16) & 255:02X}{(color >> 8) & 255:02X}{color & 255:02X}"
 
@@ -74,21 +105,28 @@ class _Page:
         self.top = self.height * MARGIN_FRACTION
         self.bottom = self.height * (1 - MARGIN_FRACTION)
         self.invisible: list[Box] = []
+        self.painted: list[tuple[Box, int]] = []
+        """Bounding box and paint order (`seqno`) of each text run, from the text trace."""
         try:
             for trace in page.get_texttrace():
                 if trace.get("type") == 3 or trace.get("opacity", 1) == 0:
                     self.invisible.append(tuple(trace["bbox"]))
+                if trace.get("seqno") is not None:
+                    self.painted.append((tuple(trace["bbox"]), int(trace["seqno"])))
         except (RuntimeError, ValueError, KeyError):  # not supported by every file
             pass
-        self.fills: list[tuple[float, Box, str]] = []
+        self.fills: list[_Fill] = []
         for drawing in page.get_drawings():
             fill, box = drawing.get("fill"), drawing.get("rect")
-            if fill is None or box is None or drawing.get("fill_opacity", 1) == 0:
+            opacity = drawing.get("fill_opacity")
+            opacity = 1.0 if opacity is None else float(opacity)
+            if fill is None or box is None or opacity == 0:
                 continue
             box = tuple(box)
             color = "".join(f"{round(c * 255):02X}" for c in fill[:3])
-            self.fills.append(((box[2] - box[0]) * (box[3] - box[1]), box, color))
-        self.fills.sort(key=lambda item: item[0])
+            seqno = drawing.get("seqno")
+            self.fills.append(_Fill(_area(box), box, color, None if seqno is None else int(seqno), opacity))
+        self.fills.sort(key=lambda item: item.area)
         try:
             self.tables = list(page.find_tables().tables)
         except (RuntimeError, ValueError):
@@ -112,16 +150,31 @@ class _Page:
                     )
                 )
 
+    def _paint_order(self, box: Box) -> int | None:
+        """When the span's text was painted: the latest `seqno` of the text runs that make it up."""
+        center = _center(box)
+        found = [seq for run, seq in self.painted if _inside(center, run) or _inside(_center(run), box)]
+        return max(found) if found else None
+
     def _span(self, raw: dict[str, Any]) -> TextSpan:
         box = tuple(raw["bbox"])
         center = _center(box)
-        background = next((color for _, rect, color in self.fills if _inside(center, rect)), None)
+        painted = self._paint_order(box)
+        # A filled shape painted before the text is its background; one painted after it, over it, hides it.
+        below = [f for f in self.fills if painted is None or f.seqno is None or f.seqno < painted]
+        background = next((f.color for f in below if _inside(center, f.box)), None)
+        covered = painted is not None and any(
+            f.seqno is not None and f.seqno > painted and f.opacity >= MIN_COVER_OPACITY and _inside(center, f.box)
+            and _covered_fraction(box, f.box) >= MIN_COVERED_FRACTION
+            for f in self.fills
+        )
         return TextSpan(
             text=raw["text"],
             color=_hex(raw["color"]),
             background=background,
             font_size_pt=round(float(raw["size"]), 2),
             hidden=any(_overlaps(box, inv) for inv in self.invisible),
+            covered=covered,
             page=self.number,
             bbox=box,
             page_size=(self.width, self.height),

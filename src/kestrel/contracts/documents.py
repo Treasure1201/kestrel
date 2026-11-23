@@ -85,6 +85,8 @@ class TextSpan(Frozen):
     font_size_pt: float | None = None
     hidden: bool = False
     """Explicitly hidden by the format (for example a DOCX vanish run)."""
+    covered: bool = False
+    """Painted over by an opaque shape drawn after it (paged formats), so a reader cannot see it."""
     page: int | None = None
     """1-based page for paged formats."""
     bbox: tuple[float, float, float, float] | None = None
