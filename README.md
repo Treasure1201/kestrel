@@ -125,4 +125,10 @@ Two things go further than the brief asks, and can be set aside when assessing t
 - Detect names and health details that pattern matching misses.
 - Have a person review every new or changed document before it is searchable.
 
+## A note on the commit timestamps
+
+The commits run from 23:00 on 22 November to about 08:40 the next morning. That is not continuous work. No work was done between 02:26 and 04:01, while I waited for a usage limit on the AI coding tool to reset; commit `03cd251` records the pause. Much of the rest was unattended: AI assistants building in parallel, and evaluation runs across eight models.
+
+A version that met the brief (all six documents ingested, cited answers from the command line, the 15 questions evaluated) was committed at 01:15, as `18df6ce`. The time after that went on things I chose to add: the web app, the MCP server, the second assistant, an independent code review and its fixes, the wider model comparison, and the documents.
+
 See also: [business note](docs/BUSINESS_NOTE.md) · [AI tool disclosure](docs/AI_DISCLOSURE.md) · [evaluation detail](docs/EVALUATION.md) · [demo script](docs/DEMO.md)
