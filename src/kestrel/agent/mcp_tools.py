@@ -22,7 +22,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from kestrel.agent.tools import UNTRUSTED_NOTICE
+from kestrel.agent.tools import TOOL_NOTICE
 from kestrel.contracts import McpServerSpec, PrivacyPolicy, PrivacyScreen
 from kestrel.errors import KestrelError
 
@@ -78,6 +78,9 @@ def _screen_value(value: Any, screen: PrivacyScreen, policy: PrivacyPolicy, foun
 OnCall = Callable[[str, str], None]
 """Told `(label, detail)` after each MCP tool call; detail holds only screened arguments."""
 
+Register = Callable[[str, str, str, str], str]
+"""Given `(server, tool, screened arguments as JSON, result text)`, returns the result's label (`t1`)."""
+
 
 def _arguments_text(arguments: Any) -> str:
     text = json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)
@@ -85,9 +88,18 @@ def _arguments_text(arguments: Any) -> str:
 
 
 def guard_tool(
-    tool: BaseTool, server: str, screen: PrivacyScreen, policy: PrivacyPolicy, on_call: OnCall | None = None
+    tool: BaseTool,
+    server: str,
+    screen: PrivacyScreen,
+    policy: PrivacyPolicy,
+    on_call: OnCall | None = None,
+    register: Register | None = None,
 ) -> BaseTool:
-    """Wrap an MCP tool: screen its arguments, bound its run time and mark its output as untrusted data."""
+    """Wrap an MCP tool: screen its arguments, bound its run time and mark its output as untrusted data.
+
+    With `register`, each successful result is labelled (`t1`, `t2`, ...) as citable
+    evidence and shown to the model with that label; errors are never labelled.
+    """
 
     def note(label: str, detail: str) -> None:
         if on_call is not None:
@@ -111,9 +123,17 @@ def guard_tool(
         except Exception as exc:  # a failing server must not end the question
             note("Tool call failed", type(exc).__name__)
             return f"Error: tool {tool.name} on server {server} failed ({type(exc).__name__})."
-        note("Called a tool", _arguments_text(arguments))
+        shown = _arguments_text(arguments)
         text = _text(result)[:MAX_RESULT_CHARS]
-        return f"{UNTRUSTED_NOTICE}\n\nResult of {tool.name} (server {server}):\n{text}"
+        if register is None:
+            note("Called a tool", shown)
+            return f"{TOOL_NOTICE}\n\nResult of {tool.name} (server {server}):\n{text}"
+        label = register(server, tool.name, shown, text)
+        note("Called a tool", f"{shown} -> {label}")
+        return (
+            f"{TOOL_NOTICE}\n\n[{label}] Result of tool {tool.name} (server {server}, arguments {shown}):\n{text}\n\n"
+            f"This is a tool result, not a document. Cite it as {label}, quoting the result exactly, for the facts it gives."
+        )
 
     return StructuredTool(
         name=tool.name,
@@ -130,6 +150,7 @@ async def load_mcp_tools(
     *,
     reserved: Sequence[str] = (),
     on_call: OnCall | None = None,
+    register: Register | None = None,
 ) -> McpTools:
     """Load the allow-listed tools of each server. Never raises for a server problem."""
     from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -151,7 +172,7 @@ async def load_mcp_tools(
                 loaded.warnings.append(f"Tool {tool.name!r} from server {spec.name!r} clashes with another tool name and was not used.")
                 continue
             taken.add(tool.name)
-            loaded.tools.append(guard_tool(tool, spec.name, screen, policy, on_call))
+            loaded.tools.append(guard_tool(tool, spec.name, screen, policy, on_call, register))
         missing = sorted(allowed - {tool.name for tool in tools})
         if missing:
             loaded.warnings.append(f"The tool server {spec.name!r} does not offer the approved tool(s) {missing}.")

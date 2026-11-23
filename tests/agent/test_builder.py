@@ -14,7 +14,7 @@ from kestrel.agent.builder import build_agent
 from kestrel.agent.context import Budget, RequestContext
 from kestrel.agent.mcp_tools import load_mcp_tools
 from kestrel.agent.middleware import is_transient
-from kestrel.agent.tools import UNTRUSTED_NOTICE, build_builtin_tools
+from kestrel.agent.tools import TOOL_NOTICE, build_builtin_tools
 from kestrel.contracts import AgentAnswer, BotConfig, KnowledgeConfig, McpServerSpec, ModelPolicy, PrivacyPolicy, SearchScope
 from kestrel.privacy import RuleBasedScreen
 
@@ -152,7 +152,7 @@ def test_mcp_tools_are_allow_listed_screened_and_wrapped() -> None:
 
     names, reply, redacted, warnings = asyncio.run(asyncio.wait_for(main(), timeout=90))
     assert names == ["define"]  # `add` is on the server but not allowed
-    assert reply.startswith(UNTRUSTED_NOTICE)
+    assert reply.startswith(TOOL_NOTICE)
     assert "Time after a claim event before benefits start." in reply
     assert "unknown term" in redacted
     assert warnings == []

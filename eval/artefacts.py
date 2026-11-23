@@ -55,7 +55,7 @@ def source_lines(result: AskResult) -> list[str]:
     """`filename, locator` per cited section, in citation order, without duplicates."""
     seen: list[str] = []
     for citation in result.citations:
-        line = f"{citation.filename}, {citation.locator}"
+        line = f"tool result: {citation.title} {citation.locator}" if citation.is_tool else f"{citation.filename}, {citation.locator}"
         if line not in seen:
             seen.append(line)
     return seen

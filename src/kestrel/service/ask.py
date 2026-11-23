@@ -21,6 +21,7 @@ from kestrel.contracts import (
     AuditEntry,
     AskResult,
     BotConfig,
+    DocumentStatus,
     EvidenceReport,
     Outcome,
     Principal,
@@ -87,6 +88,16 @@ def _resolve(answered: Answered) -> tuple[ResolvedCitation, ...]:
     for citation in answered.answer.citations if answered.answer else ():
         label = clean_label(citation.label)
         evidence = answered.context.evidence.get(label)
+        tool = answered.context.tool_results.get(label)
+        if evidence is None and tool is not None:
+            resolved.append(ResolvedCitation(
+                label=label, quote=citation.quote, supports=citation.supports, filename="Tool result",
+                title=f"{tool.server} / {tool.tool}", locator=tool.arguments or "(no arguments)",
+                document_id="", section_id="",
+                status=DocumentStatus.CURRENT, source="tool", tool_server=tool.server, tool_name=tool.tool,
+                tool_arguments=tool.arguments,
+            ))
+            continue
         if evidence is None:
             continue
         hit = evidence.hit
@@ -123,7 +134,7 @@ def _success(runtime: Runtime, req: _Request) -> AskResult:
         trace_id=req.trace_id, bot_id=req.bot.id, question=req.screened.text, evidence_report=report,
         redactions=req.screened.matched, scope=req.scope.scope if req.scope else None, model=req.model,
         usage=_usage(runtime, req), latency_ms=req.latency_ms, retrieved=answered.context.retrieved(),
-        steps=_steps(req),
+        tool_results=answered.context.tools_shown(), steps=_steps(req),
     )
     if not report.passed and req.bot.verification.on_failure == "withhold":
         return AskResult(outcome=Outcome.WITHHELD, answer=WITHHELD_MESSAGE,
@@ -143,7 +154,8 @@ def _failure(runtime: Runtime, req: _Request, error: KestrelError) -> AskResult:
         outcome=outcome, reason=error.user_message, redactions=req.screened.matched if req.screened else (),
         scope=req.scope.scope if req.scope else None, model=req.model, usage=_usage(runtime, req),
         latency_ms=req.latency_ms, error_category=error.category,
-        retrieved=req.answered.context.retrieved() if req.answered else (), steps=_steps(req),
+        retrieved=req.answered.context.retrieved() if req.answered else (),
+        tool_results=req.answered.context.tools_shown() if req.answered else (), steps=_steps(req),
     )
 
 

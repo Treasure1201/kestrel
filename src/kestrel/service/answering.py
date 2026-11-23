@@ -43,8 +43,9 @@ def new_budget(bot: BotConfig, runtime: Runtime) -> Budget:
     )
 
 
-def _check(question: Screened, answer: AgentAnswer, ctx: RequestContext, scope: ScopeDecision) -> list[CheckIssue]:
-    return run_checks(question.text, answer, dict(ctx.evidence), scope, tuple(ctx.calculations))
+def _check(question: Screened, answer: AgentAnswer, ctx: RequestContext, scope: ScopeDecision, bot: BotConfig) -> list[CheckIssue]:
+    return run_checks(question.text, answer, dict(ctx.evidence), scope, tuple(ctx.calculations), dict(ctx.tool_results),
+                      has_documents=bool(bot.knowledge.collections))
 
 
 async def answer_question(
@@ -67,6 +68,7 @@ async def answer_question(
         loaded = await load_mcp_tools(
             specs, runtime.screen, bot.privacy, reserved=[t.name for t in tools] + [ANSWER_TOOL, READ_FILE],
             on_call=lambda label, detail: ctx.record_step("mcp_tool", label, detail),
+            register=ctx.register_tool_result,
         )
         tools += loaded.tools
         outcome.warnings += loaded.warnings
@@ -78,7 +80,7 @@ async def answer_question(
             detail="no structured response after one nudge",
         )
     outcome.answer = turn.answer
-    outcome.issues = _check(question, turn.answer, ctx, scope)
+    outcome.issues = _check(question, turn.answer, ctx, scope, bot)
     _record_checks(ctx, outcome.issues)
     earlier: list[CheckIssue] = []
     while not outcome.passed and ctx.budget.repairs < ctx.budget.max_repairs:
@@ -91,7 +93,7 @@ async def answer_question(
         earlier += [i for i in outcome.issues if i.severity == "error"]
         turn = repaired
         outcome.answer = repaired.answer
-        outcome.issues = _check(question, repaired.answer, ctx, scope)
+        outcome.issues = _check(question, repaired.answer, ctx, scope, bot)
         outcome.repaired = True
         _record_checks(ctx, outcome.issues)
     # Issues the repair turn fixed are kept as warnings, so the audit shows why a repair happened.

@@ -104,7 +104,9 @@ def _body(result: AskResult) -> None:
         st.markdown(f"**Note:** {md(caveat)}")
     if result.citations:
         body = "".join(
-            f'<span class="k-chip k-label">{esc(c.label)} · {esc(c.filename)}</span>' for c in result.citations
+            f'<span class="k-chip k-label">{esc(c.label)} · '
+            f'{esc("tool " + (c.tool_name or "") if c.is_tool else c.filename)}</span>'
+            for c in result.citations
         )
         st.markdown(f'<div class="k-chips">{body}</div>', unsafe_allow_html=True)
 
