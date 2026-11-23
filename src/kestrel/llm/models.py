@@ -18,7 +18,7 @@ from kestrel.config import Settings
 from kestrel.contracts import DoctorCheck, Locality
 from kestrel.errors import ConfigurationError, KestrelError, ProviderUnavailableError
 from kestrel.llm.catalog import ModelCatalog, load_model_catalog
-from kestrel.llm.policy import model_locality, url_host
+from kestrel.llm.policy import is_loopback_url, model_locality, url_host
 from kestrel.llm.refs import ModelRef, parse_model_ref
 
 OLLAMA_CLOUD_URL = "https://ollama.com"
@@ -111,11 +111,17 @@ def _build_ollama(ref: ModelRef, settings: Settings, catalog: ModelCatalog) -> B
                 "headers": {"Authorization": f"Bearer {key}"},
             },
         )
+    base_url = _ollama_base_url(settings)
+    client_kwargs: dict[str, object] = {"timeout": timeout, "follow_redirects": False}
+    if is_loopback_url(base_url):
+        # An on-device endpoint must never be reached through an environment proxy
+        # (HTTP_PROXY with NO_PROXY cleared would route loopback traffic off the machine).
+        client_kwargs["trust_env"] = False
     chat = ChatOllama(
         **common,
-        base_url=_ollama_base_url(settings),
+        base_url=base_url,
         keep_alive=catalog.ollama.keep_alive,
-        client_kwargs={"timeout": timeout, "follow_redirects": False},
+        client_kwargs=client_kwargs,
     )
     _strip_ambient_auth(chat)
     return chat
