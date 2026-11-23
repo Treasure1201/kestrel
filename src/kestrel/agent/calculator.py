@@ -5,6 +5,11 @@ Accepted: numbers (with digit grouping such as `50 000` or `50,000`, and an opti
 50000` is `0.75 * 50000`), and the functions `min`, `max` and `round`. Nothing else:
 no names, attributes, subscripts, powers, comparisons or other calls.
 
+Inside the parentheses of `min`, `max` and `round` a comma always separates the
+arguments (`min(100,200)` is 100), so digit grouping there must use spaces
+(`max(1 000, 2 000)`). A grouped value written with commas inside a call leaves a
+part such as `000`, which is refused with that advice rather than read as zero.
+
 Arithmetic uses `Decimal` with 28 significant digits, so `0.1 + 0.2` is exactly
 `0.3`. Only the final result is rounded: to two decimal places, half away from zero
 (`ROUND_HALF_UP`), with trailing zeros removed. `round(x, n)` uses the same rule.
@@ -25,6 +30,8 @@ _PRECISION = 28
 
 _GROUPED = re.compile(r"(?<=\d)[ ,    '](?=\d{3}(?!\d))")
 _CURRENCY = re.compile(r"(?<![A-Za-z_])(?:ZAR|R)\s?(?=\d)")
+_FUNCTION_OPEN = re.compile(r"\b(?:min|max|round)\s*\($")
+_ARGUMENT_COMMA = "\x00"
 _TIMES = re.compile(r"(?<=[\d)])\s*[xX×]\s*(?=[\d(])")
 _PERCENT_OF = re.compile(r"%\s*of\b", re.IGNORECASE)
 _PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
@@ -62,14 +69,29 @@ def format_decimal(value: Decimal) -> str:
     return "0" if text in {"-0", ""} else text
 
 
+def _protect_argument_commas(text: str) -> str:
+    """Mark every comma inside a min/max/round argument list, so digit-group removal cannot take it."""
+    stack: list[bool] = []
+    out: list[str] = []
+    for char in text:
+        if char == "(":
+            stack.append(bool(_FUNCTION_OPEN.search("".join(out) + char)) or any(stack))
+        elif char == ")" and stack:
+            stack.pop()
+        out.append(_ARGUMENT_COMMA if char == "," and stack and stack[-1] else char)
+    return "".join(out)
+
+
 def normalise_expression(expression: str) -> str:
     """Rewrite human notation (`R1 000`, `1,000`, `75%`, `3 x 4`, `75% of`) into plain arithmetic."""
     text = expression.replace("−", "-").replace("÷", "/")
     text = _CURRENCY.sub("", text)
+    text = _protect_argument_commas(text)
     previous = None
     while previous != text:
         previous = text
         text = _GROUPED.sub("", text)
+    text = text.replace(_ARGUMENT_COMMA, ",")
     text = _TIMES.sub(" * ", text)
     text = _PERCENT_OF.sub("% *", text)
     return _PERCENT.sub(lambda m: f"({m.group(1)} / 100)", text)
@@ -100,6 +122,11 @@ class _Evaluator:
             return self.evaluate(node.body)
         if isinstance(node, ast.Constant) and type(node.value) in (int, float):
             segment = ast.get_source_segment(self.source, node) or repr(node.value)
+            if re.match(r"0\d", segment):
+                raise CalculationError(
+                    f"'{segment}' is not a number. Inside min, max and round a comma separates the values, so write "
+                    "thousands with spaces (25 000) or without grouping (25000)."
+                )
             value = self._check(Decimal(segment))
             self.operands.append(value)
             return value

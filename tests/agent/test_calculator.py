@@ -90,3 +90,24 @@ def test_normalise_and_format() -> None:
     assert normalise_expression("R1 000 000 x 2") == "1000000 * 2"
     assert format_decimal(Decimal("37500.00")) == "37500"
     assert format_decimal(Decimal("-0.00")) == "0"
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("min(100,200)", "100"),
+        ("max(100,200)", "200"),
+        ("max(1 000, 2 000)", "2000"),
+        ("round(1234.567, 2)", "1234.57"),
+        ("round(1234.567,2)", "1234.57"),
+        ("25,000,000 * 2", "50000000"),
+        ("2 * min(1 000,(500 + 1))", "1002"),
+    ],
+)
+def test_commas_inside_function_calls_separate_arguments(expression: str, expected: str) -> None:
+    assert evaluate(expression).text == expected
+
+
+def test_comma_grouping_inside_a_call_is_refused_with_advice() -> None:
+    with pytest.raises(CalculationError, match="spaces"):
+        evaluate("min(25,000, 30000)")
