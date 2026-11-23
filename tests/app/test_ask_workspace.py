@@ -14,15 +14,6 @@ from kestrel.contracts import REPAIRED_PREFIX, AskResult, CheckIssue, EvidenceRe
 TABS = ("Sources (", "How it was answered", "Checks", "Other passages (")
 
 
-class ToolCitation(ResolvedCitation):
-    """A citation carrying the tool fields a result uses to mark evidence that came from a tool."""
-
-    source: str = "tool"
-    tool_server: str | None = None
-    tool_name: str | None = None
-    tool_arguments: str | None = None
-
-
 def evidence_question(at: AppTest) -> str:
     """The question named in the evidence pane's header."""
     header = next(str(m.value) for m in at.markdown if 'class="k-evq"' in str(m.value))
@@ -102,8 +93,8 @@ def test_before_repair_items_are_fixed_not_failed(tmp_path: Path) -> None:
 
 def test_tool_citation_renders_as_tool_output(tmp_path: Path) -> None:
     base = answered().citations[0]
-    cited = ToolCitation(**base.model_dump(), tool_server="rates-server", tool_name="lookup_rate",
-                         tool_arguments='{"band": 5}')
+    cited = base.model_copy(update={"source": "tool", "tool_server": "rates-server", "tool_name": "lookup_rate",
+                                    "tool_arguments": '{"band": 5}'})
     result = answered().model_copy(update={"citations": (cited,)})
     at = start(FakeService(ask_result=result), tmp_path)
     ask(at, "What is the waiting period?")
