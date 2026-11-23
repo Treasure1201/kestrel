@@ -9,7 +9,9 @@ The rules (each covered by a test table):
 - Two different editions or dates, or a comparison across editions: a clarification.
 - A year that is clearly an amount or a count ("2025 members", "R2025") is ignored.
 - Any other bare year, or a full date with no cue, could be an event date or an
-  edition: a clarification.
+  edition: a clarification, but only when some document family in the bot's
+  collections has more than one approved edition. Otherwise there is no edition to
+  choose, so the year or date is ordinary content and the default scope applies.
 - An edition must exist in the bot's collections. A year maps to the edition labelled
   with it; if none, or several, match, the clarification lists the editions there are.
 """
@@ -126,6 +128,18 @@ def _editions(documents: Sequence[DocumentRecord]) -> list[str]:
     return sorted(labels)
 
 
+def has_several_editions(documents: Sequence[DocumentRecord]) -> bool:
+    """True when some document family has more than one approved (current or superseded) edition.
+
+    Only then can a bare year or an uncued date mean an edition; otherwise it is ordinary content.
+    """
+    editions: dict[str, set[str]] = {}
+    for doc in documents:
+        if doc.family and doc.edition and doc.status in {DocumentStatus.CURRENT, DocumentStatus.SUPERSEDED}:
+            editions.setdefault(doc.family, set()).add(doc.edition)
+    return any(len(labels) > 1 for labels in editions.values())
+
+
 def _clarify(message: str) -> ScopeDecision:
     return ScopeDecision(clarification=message)
 
@@ -177,7 +191,7 @@ def resolve_scope(question: str, knowledge: KnowledgeConfig, documents: Sequence
         return _clarify("Comparing editions is not supported in one question. " + ASK_ONE)
 
     years = _bare_years(_mask(question, taken))
-    if uncued_dates or years:
+    if (uncued_dates or years) and has_several_editions(documents):
         value = uncued_dates[0] if uncued_dates else years[0]
         year_match = re.search(_YEAR, value)
         return _clarify(AMBIGUOUS_YEAR.format(value=value, year=year_match.group(0) if year_match else "2025"))
