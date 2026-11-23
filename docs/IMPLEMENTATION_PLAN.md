@@ -140,7 +140,7 @@ A second model reviews the code for security and correctness. A fresh clone is s
 
 | Risk | Mitigation |
 |---|---|
-| Scope against a four-hour brief | thin adapters over one service; the README states the time spent and what was cut |
+| Scope against a four-hour brief | thin adapters over one service; the README separates what the brief asks for from what goes beyond it |
 | Framework API drift | pinned lockfile; APIs verified against installed versions in WP0 and WP4 |
 | sqlite-vec fails to load on a reviewer's Python | keyword-only fallback with a warning; `doctor` explains |
 | Small local models fail structured output | repair turn; evaluation reports per-model results honestly; README recommends tested models |
