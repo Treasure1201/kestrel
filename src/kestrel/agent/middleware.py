@@ -100,6 +100,66 @@ class ToolChoiceFallback(AgentMiddleware[Any, Any, Any]):
             return await handler(self._maybe_relaxed(request))
 
 
+_MALFORMED_TOOL_CALL = ("error parsing tool call", "failed to parse tool call")
+MALFORMED_NOTE = (
+    "Your last reply could not be read: it was not a valid tool call. Call exactly one tool, with valid JSON "
+    "arguments only and no other text inside them. To finish, call the answer tool."
+)
+
+
+def is_malformed_tool_call(exc: BaseException) -> bool:
+    """True when the provider could not parse the tool call the model wrote: the model's error, not an outage."""
+    text = str(exc).casefold()
+    return any(marker in text for marker in _MALFORMED_TOOL_CALL)
+
+
+class MalformedReplyRetry(AgentMiddleware[Any, Any, Any]):
+    """Ask again when the provider rejects a reply because its tool call could not be parsed.
+
+    Some local models occasionally write free text where the tool-call arguments belong,
+    and the provider raises instead of returning a message. That is a malformed reply,
+    like an answer that fails validation, so the model is asked again with a short note,
+    up to `max_retries` times. It sits outside `BudgetMiddleware`, so every retry is a
+    counted model call; with no call left the original error is raised.
+    """
+
+    def __init__(self, budget: Budget, max_retries: int = 2) -> None:
+        super().__init__()
+        self.budget = budget
+        self.max_retries = max_retries
+
+    def _again(self, exc: Exception, attempt: int) -> bool:
+        return is_malformed_tool_call(exc) and attempt < self.max_retries and self.budget.model_calls_left > 0
+
+    @staticmethod
+    def _noted(request: ModelRequest[Any]) -> ModelRequest[Any]:
+        return request.override(messages=[*request.messages, HumanMessage(MALFORMED_NOTE)])
+
+    def wrap_model_call(
+        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], ModelResponse[Any]]
+    ) -> ModelResponse[Any]:
+        attempt, current = 0, request
+        while True:
+            try:
+                return handler(current)
+            except Exception as exc:
+                if not self._again(exc, attempt):
+                    raise
+                attempt, current = attempt + 1, self._noted(request)
+
+    async def awrap_model_call(
+        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]]
+    ) -> ModelResponse[Any]:
+        attempt, current = 0, request
+        while True:
+            try:
+                return await handler(current)
+            except Exception as exc:
+                if not self._again(exc, attempt):
+                    raise
+                attempt, current = attempt + 1, self._noted(request)
+
+
 class BudgetMiddleware(AgentMiddleware[Any, Any, Any]):
     """Counts every model call against the question's budget.
 
