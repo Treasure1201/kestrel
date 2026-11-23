@@ -144,7 +144,7 @@ CheckName = Literal[
     "decline_reason",
     "source_status",
 ]
-"""`schema` plus the seven evidence checks, in the order DESIGN.md section 6 lists them."""
+"""`schema` plus the seven evidence checks, in the order docs/ARCHITECTURE.md section 6 lists them."""
 
 
 REPAIRED_PREFIX = "Before repair: "

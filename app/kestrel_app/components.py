@@ -46,7 +46,7 @@ CHECK_LABELS: dict[str, str] = {
     "source_status": "Cited source is approved and in scope",
 }
 EVIDENCE_CHECKS = 7
-"""The evidence checks after the schema check (DESIGN.md section 6)."""
+"""The evidence checks after the schema check (docs/ARCHITECTURE.md section 6)."""
 
 STATUS_BADGE: dict[DocumentStatus, tuple[str, str]] = {
     DocumentStatus.CURRENT: ("current", "blue"),

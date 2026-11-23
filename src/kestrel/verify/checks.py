@@ -1,4 +1,4 @@
-"""The status contract and the seven evidence checks (DESIGN.md section 6).
+"""The status contract and the seven evidence checks (docs/ARCHITECTURE.md section 6).
 
 Pure functions: they read the screened question, the model's `AgentAnswer`, the
 evidence handed to the model in this request, the scope decision and the calculations
