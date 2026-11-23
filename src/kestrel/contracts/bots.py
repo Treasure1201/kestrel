@@ -76,7 +76,10 @@ class RedactionPattern(Frozen):
     @field_validator("pattern")
     @classmethod
     def _compiles(cls, value: str) -> str:
-        re.compile(value)
+        try:
+            re.compile(value)
+        except re.error as exc:
+            raise ValueError(f"not a valid regular expression: {exc}") from None
         return value
 
 

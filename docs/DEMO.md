@@ -150,7 +150,7 @@ uv run kestrel audit tail -n 1
 The answer starts with "Personal information removed from the question: 1 item (broker_code)" and gives 6 months. The log shows the question as "Broker [BROKER_CODE] asks: …".
 Undo: `git checkout -- bots/kestrel-products/bot.yaml`
 
-Keep the pattern in single quotes. A pattern that is not a valid regular expression stops every command with "unexpected error" (`--debug` shows the cause), so undo with `git checkout` if that happens.
+Keep the pattern in single quotes. A pattern that is not a valid regular expression stops every command with an error naming the file and the field (`privacy.extra_patterns.0.pattern`), which is itself worth showing; undo with `git checkout bots/kestrel-products/bot.yaml`.
 
 ### 3. Add an assistant
 

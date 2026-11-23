@@ -73,7 +73,7 @@ Each format is read with its structure kept, so a source can be named precisely.
 
 ## Evaluation
 
-**Method.** `eval/run_eval.py` asks all 15 questions and saves every answer with its sources. For each question I wrote down, from the documents, the facts a correct answer must contain and the conditions it must not drop. A script compares each answer against that list as a first pass. It is a text match, not a judge: it flagged three correct answers as wrong, so I read every answer myself, and the assessment column in the workbook is mine.
+**Method.** `eval/run_eval.py` asks all 15 questions and saves every answer with its sources. For each question I wrote down, from the documents, the facts a correct answer must contain and the conditions it must not drop. A script compares each answer against that list as a first pass. It is a text match, not a judge: it marked several correct answers as wrong (each is listed in [docs/EVALUATION.md](docs/EVALUATION.md)), so I read every answer myself, and the assessment column in the workbook is mine.
 
 **Results.** Three runs of the 15 questions on each model (39 answerable, 6 unanswerable per model):
 
