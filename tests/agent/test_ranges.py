@@ -123,8 +123,11 @@ def test_get_table_with_value_names_the_row_first() -> None:
     ctx, tools = _tools()
     tools["search_documents"].invoke({"query": "limit"})
     out = tools["get_table"].invoke({"label": "c1", "value": 320})
-    assert out.startswith("Row for 320: c1.r4 (250 to 499). Cite this row.")
-    assert "[c1.r4] (r4 covers 250 to 499) Band: 4; From: 250; To: 499; Limit: R 5 000 000" in out
+    assert out.startswith("Row for 320: c1.r4 (250 to 499). Cite this row as c1.r4")
+    assert "r4 covers 250 to 499;" in out
+    row = "[c1.r4] Band: 4; From: 250; To: 499; Limit: R 5 000 000"
+    assert out.count(row) == 2  # in the table, and repeated at the end
+    assert out.endswith(f"The row that covers the value is:\n{row}\nCite it as c1.r4 and quote from that row text.")
     assert ctx.evidence["c1.r4"].text == "Band: 4; From: 250; To: 499; Limit: R 5 000 000"  # the citable text is unchanged
     step = ctx.steps[-1]
     assert step.kind == "table" and "value 320" in step.detail and "c1.r4" in step.detail
@@ -135,7 +138,9 @@ def test_get_table_without_value_still_annotates_rows() -> None:
     tools["search_documents"].invoke({"query": "limit"})
     out = tools["get_table"].invoke({"label": "c1"})
     assert not out.startswith("Row for")
-    assert "[c1.r5] (r5 covers 500 or more)" in out
+    assert "Row ranges (a tool note, not document text: never quote it): r1 covers 1 to 49;" in out
+    assert "r5 covers 500 or more." in out
+    assert "[c1.r5] Band: 5; From: 500; To: and above" in out  # row lines carry only the row text
 
 
 def test_get_table_value_outside_every_row_says_so() -> None:

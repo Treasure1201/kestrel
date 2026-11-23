@@ -6,9 +6,10 @@
   instruction to answer from what is already there.
 - `get_table(label, value=None)`: every row of the table an excerpt belongs to, each
   labelled `<label>.r<n>` and registered as citable evidence. When the table's rows
-  cover number ranges (`agent.ranges`), each row line says which range it covers, and
-  with `value` the output starts with the one row that covers that number (or says
-  plainly that none does), so a range lookup never depends on reading numbers by eye.
+  cover number ranges (`agent.ranges`), a note line (kept apart from the row text, which
+  quotes must come from) names the range each row covers, and with `value` the output
+  starts with the one row that covers that number (or says plainly that none does) and
+  ends with that row's text, so a range lookup never depends on reading numbers by eye.
 - `calculate(expression)`: the safe decimal calculator.
 
 Only the tools a bot names in `tools:` are built.
@@ -53,9 +54,12 @@ def _source_line(label: str, hit: SearchHit, ranges: RangeTable | None = None) -
     return line
 
 
-def _range_note(row_number: int, ranges: RangeTable | None) -> str:
-    band = ranges.band_for_row(row_number) if ranges else None
-    return f"(r{row_number} covers {band.describe()}) " if band else ""
+def _range_note(ranges: RangeTable | None) -> str:
+    """One line naming each row's range, kept apart from the rows so it is never mistaken for row text."""
+    if ranges is None:
+        return ""
+    covers = "; ".join(f"r{band.row_number} covers {band.describe()}" for band in ranges.bands)
+    return f"Row ranges (a tool note, not document text: never quote it): {covers}.\n"
 
 
 def _lookup_line(base: str, lookup: Lookup, shown: str) -> str:
@@ -63,7 +67,8 @@ def _lookup_line(base: str, lookup: Lookup, shown: str) -> str:
         return f"{base}.r{band.row_number} ({band.describe()})"
 
     if lookup.row is not None:
-        return f"Row for {shown}: {row(lookup.row)}. Cite this row."
+        return (f"Row for {shown}: {row(lookup.row)}. Cite this row as {base}.r{lookup.row.row_number}, quoting its row "
+                "text (repeated at the end), not this line.")
     if lookup.before is not None and lookup.after is not None:
         where = f"it falls between {row(lookup.before)} and {row(lookup.after)}"
     elif lookup.after is not None:
@@ -81,10 +86,8 @@ def _where(filename: str, locator: str) -> str:
 
 def _table_rows(ctx: RequestContext, base: str, table: TableView, ranges: RangeTable | None = None) -> str:
     labels = [ctx.register_row(base, row, table.header) for row in table.rows]
-    return "\n".join(
-        f"[{label}] {_range_note(row.row_number, ranges)}{row.as_text(table.header)}"
-        for label, row in zip(labels, table.rows, strict=True)
-    )
+    rows = "\n".join(f"[{label}] {row.as_text(table.header)}" for label, row in zip(labels, table.rows, strict=True))
+    return _range_note(ranges) + rows
 
 
 def _ranges_of(retriever: Retriever, ctx: RequestContext, section_id: str, cache: dict[str, RangeTable | None]) -> RangeTable | None:
@@ -205,34 +208,38 @@ def get_table_tool(ctx: RequestContext, retriever: Retriever) -> BaseTool:
         edition = f", edition {table.edition}" if table.edition else ""
         ranges = find_ranges(table.rows)
         body = _table_rows(ctx, base, table, ranges)
-        lookup = _lookup(ctx, base, ranges, value)
+        lookup, matched = _lookup(ctx, base, ranges, value)
+        closing = "Cite the row you rely on by its label and quote from that row."
+        row = next((r for r in table.rows if matched is not None and r.row_number == matched), None)
+        if row is not None:
+            closing = (f"The row that covers the value is:\n[{base}.r{row.row_number}] {row.as_text(table.header)}\n"
+                       f"Cite it as {base}.r{row.row_number} and quote from that row text.")
         return (
             f"{lookup}{UNTRUSTED_NOTICE}\n\nTable from [{base}] {table.filename} > {table.locator} "
-            f"(status: {table.status.value}{edition})\nColumns: {' | '.join(table.header)}\n{body}\n\n"
-            "Cite the row you rely on by its label and quote from that row."
+            f"(status: {table.status.value}{edition})\nColumns: {' | '.join(table.header)}\n{body}\n\n{closing}"
         )
 
     return StructuredTool.from_function(get_table, name="get_table")
 
 
-def _lookup(ctx: RequestContext, base: str, ranges: RangeTable | None, value: float | str | None) -> str:
-    """The first line of a `get_table` result for `value`, recorded as a step; empty without a value."""
+def _lookup(ctx: RequestContext, base: str, ranges: RangeTable | None, value: float | str | None) -> tuple[str, int | None]:
+    """The first line of a `get_table` result for `value` (recorded as a step) and the matched row number."""
     if value is None or (isinstance(value, str) and not value.strip()):
-        return ""
+        return "", None
     shown = str(value).strip()
     number = parse_number(shown)
     if number is None:
-        return f"The value {shown!r} is not a number, so no row was picked. Pass value as a number, such as 320.\n\n"
+        return f"The value {shown!r} is not a number, so no row was picked. Pass value as a number, such as 320.\n\n", None
     if isinstance(value, float) and value.is_integer():
         shown = str(int(value))
     if ranges is None:
         ctx.record_step("table", "Range lookup not possible", f"value {shown}: the table has no recognised number ranges")
         return (f"This table has no recognised number ranges, so no row was picked for {shown}. Read the rows and "
-                "cite the one that applies.\n\n")
+                "cite the one that applies.\n\n"), None
     lookup = ranges.lookup(number)
     matched = f"row {base}.r{lookup.row.row_number} ({lookup.row.describe()})" if lookup.row else "no row covers it"
     ctx.record_step("table", "Looked up a number in a table of ranges", f"value {shown}: {matched}")
-    return _lookup_line(base, lookup, shown) + "\n\n"
+    return _lookup_line(base, lookup, shown) + "\n\n", lookup.row.row_number if lookup.row else None
 
 
 def calculate_tool(ctx: RequestContext) -> BaseTool:
