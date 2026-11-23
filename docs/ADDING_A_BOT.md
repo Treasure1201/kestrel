@@ -1,91 +1,99 @@
-# Adding a bot
+# Adding an assistant
 
-To add a bot, create its configuration and document folders. The core needs no code changes. Follow the supplied `staff-policies` bot here; its three Kestrel Assurance staff policies are fictitious.
+An assistant is a folder of configuration plus a folder of documents; adding one needs no code. The code calls an assistant a *bot*, hence `bots/` and `--bot`. The included `staff-policies` assistant, over three made-up staff policies, is the worked example: open its files beside this page.
 
 ```mermaid
 flowchart LR
-    D["data/source/staff-policies/<br/>the documents"] --> I["kestrel ingest<br/>parse, scan, manifest check"]
-    M["bots/staff-policies/manifest.yaml<br/>approved files and hashes"] --> I
-    I --> DB[("SQLite<br/>collection: staff-policies")]
-    Y["bots/staff-policies/bot.yaml<br/>who, what, which model, which tools"] --> A["Agent for this bot"]
-    P["prompt.md and skills/"] --> A
-    C["config/mcp_servers.yaml<br/>approved servers"] --> A
+    D["data/source/&lt;id&gt;/<br/>the documents"] --> I["kestrel ingest --bot &lt;id&gt;"]
+    M["bots/&lt;id&gt;/manifest.yaml<br/>approved files and hashes"] --> I
+    I --> DB[("SQLite file,<br/>tagged with the collection")]
+    Y["bots/&lt;id&gt;/bot.yaml<br/>and prompt.md"] --> A["The assistant"]
     DB --> A
-    A --> Q["kestrel ask --bot staff-policies"]
+    A --> Q["kestrel ask --bot &lt;id&gt;"]
 ```
 
-## 1. Create the folders
+## Steps
 
-```
-bots/staff-policies/            bot.yaml, prompt.md, manifest.yaml, skills/, eval/gold.yaml
-data/source/staff-policies/     the documents (DOCX, PDF, XLSX or Markdown)
-```
+1. **Pick an id**: lower-case words joined by hyphens, such as `it-helpdesk`. Use it for the folder `bots/<id>/`, the `id:` field and, normally, the collection name.
 
-Use the same lower-case, hyphenated name for the bot id, folder and `id:` field.
+2. **Add the documents** to `data/source/<collection>/` (Word, PDF, Excel or Markdown). Clear headings and numbered sections give clear citations, such as `section 2 "Annual leave", table 1`.
 
-## 2. Drop in the documents
+3. **Approve them** in `bots/<id>/manifest.yaml`, one entry per file (copy `bots/staff-policies/manifest.yaml`). Each entry needs `filename`, `sha256`, `label` (the title shown in citations), `family` (the same for every edition of one document), `edition`, `effective_from`, `approved: true` and `approved_by`; add `supersedes: "<edition>"` when a file replaces an earlier edition. Compute the hash of the file exactly as it is on disk:
 
-Put files in `data/source/<collection>/`. Headings and numbered sections supply citation locations, such as `section 2 "Annual leave", table 1`, so use clear headings. Tables are stored whole and by row; the assistant can then cite the row it used.
+   ```
+   uv run python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" data/source/<collection>/<file>
+   ```
 
-## 3. Write `bot.yaml`
+   Any later change to the file's bytes, including line endings, makes it `pending` (not searched) until you update the hash.
 
-| Field | What it does | `staff-policies` |
-|---|---|---|
-| `id`, `name`, `description` | Identity shown in every front end | `staff-policies`, "Staff Policy Helper" |
-| `audience` | Roles allowed to see and use the bot; checked on every call | `[staff]` |
-| `knowledge.collections` | The only documents the bot can search (filtered in SQL) | `[staff-policies]` |
-| `knowledge.approval` | `required`: a file is searchable only if listed in the manifest with its hash. `none`: every file is searchable | `required` |
-| `prompt` | Persona and domain guidance, appended to the shared core rules | `prompt.md` |
-| `tools` | Built-in read-only tools: `search_documents`, `get_table`, `calculate` | all three |
-| `mcp_servers` | Names of centrally approved servers from `config/mcp_servers.yaml` | `[workday-calendar]` |
-| `skills` | Folders holding `<skill>/SKILL.md` procedures, read-only | `[skills/]` |
-| `model.default` | `<provider>:<model>`; `${KESTREL_MODEL}` uses the global setting | `ollama:gpt-oss:20b` |
-| `model.allowed_providers` | Providers this bot may send text to | `[ollama]` |
-| `model.max_model_calls`, `max_searches`, `timeout_s` | Budget per question | 12, 6, 300 s |
-| `privacy.classification` | `confidential` allows on-device destinations only (models and MCP servers) | `confidential` |
-| `privacy.on_personal_information` | `redact` replaces personal details; `block` refuses the question | `block` |
-| `privacy.audit_question_text` | `redacted` stores the screened question; `none` stores only a digest | `none` |
-| `privacy.retention_days` | Audit rows older than this are pruned | 30 |
-| `verification.on_failure` | `withhold` hides an answer that fails the evidence checks; `warn` shows it with a warning | `withhold` |
-| `evaluation.gold` | Gold answers for `eval.run_eval` | `eval/gold.yaml` |
+4. **Write `bots/<id>/prompt.md`**: a few lines on who the users are and what the assistant covers. It is added after the shared rules, which already require quotes and declines.
 
-An unknown field causes a load error naming that field, so a typo is visible immediately. (There is no `examples:` field.)
+5. **Write `bots/<id>/bot.yaml`**. The minimum is:
 
-## 4. Approve the documents
+   ```yaml
+   id: it-helpdesk
+   name: IT Help Desk
+   audience: [staff]
+   knowledge:
+     collections: [it-helpdesk]
+   prompt: prompt.md
+   model:
+     default: ${KESTREL_MODEL}
+   ```
 
-When using `approval: required`, list each file in `manifest.yaml` with its SHA-256, family, edition and effective date. Any change to its bytes invalidates approval: it becomes `pending` until re-approved. Compute the hash with:
+   `audience` must include one of your roles in `KESTREL_ROLES` (`.env.example` gives `call-centre-agent,broker,staff,operator`), or you will be refused.
 
-```
-uv run python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" data/source/staff-policies/KA_Staff_Leave_Policy.md
-```
+6. **Ingest and test.** Ingesting needs the `operator` role.
 
-Use `approval: none` only for scratch or test bots: it skips the human approval step.
+   ```
+   uv run kestrel ingest --bot it-helpdesk
+   uv run kestrel search --bot it-helpdesk "replacement laptop"
+   uv run kestrel ask --bot it-helpdesk "How long does a password reset link last?"
+   ```
 
-## 5. Optional: skills and MCP servers
+   Ingest lists each file with its status; anything other than `current` gives the reason. `search` shows what the assistant can find without calling a model. To confirm isolation, search the product assistant for the same words (`uv run kestrel search --bot kestrel-products "replacement laptop"`): none of the new documents appear.
 
-Write a skill in `bots/<id>/skills/<skill-name>/SKILL.md`. Its front matter needs a `name` matching the folder name and a one-line `description`. The staff bot's `leave-entitlement` skill explains how to select a leave-table band. A skill guides the agent; it cannot serve as evidence.
+## Every field of `bot.yaml`
 
-Before a bot can use an MCP server, a person must approve it in `config/mcp_servers.yaml`, recording its command, allowed tools, `on-device` or `external` location and a read-only statement. The bot opts in by name. A `confidential` bot refuses an `external` server.
+Required fields are marked. Any field not in this table is rejected with an error naming it.
 
-## 6. Ingest and ask
+| Field | What it does | Default | `staff-policies` |
+|---|---|---|---|
+| `id` (required) | Must equal the folder name | | `staff-policies` |
+| `name` (required) | Shown in every front end | | `Staff Policy Helper` |
+| `description` | One line shown in lists | empty | one line |
+| `audience` (required) | Roles allowed to use the assistant, checked on every call | | `[staff]` |
+| `knowledge.collections` (required) | The only document collections it can search | | `[staff-policies]` |
+| `knowledge.approval` | `required`: only files approved in the manifest are searched. `none`: every file is, with no approval step (for scratch assistants only) | `required` | `required` |
+| `knowledge.manifest` | Path of the approved-document list, inside the folder | `manifest.yaml` | `manifest.yaml` |
+| `knowledge.default_scope` | Only `current` is accepted: older editions are searched only when a question names one | `current` | `current` |
+| `prompt` (required) | The instructions file, inside the folder | | `prompt.md` |
+| `tools` | Which of `search_documents`, `get_table`, `calculate` the model gets | all three | all three |
+| `mcp_servers` | Names of approved servers from `config/mcp_servers.yaml` | none | `[workday-calendar]` |
+| `skills` | Folders holding `<skill>/SKILL.md` procedures the model may read | none | `[skills/]` |
+| `model.default` (required) | `<provider>:<model>`; `${KESTREL_MODEL}` uses the `.env` setting | | `ollama:gpt-oss:20b` |
+| `model.allowed_providers` | Providers it may send text to: `ollama`, `ollama-cloud`, `anthropic`, `openai` | all four | `[ollama]` |
+| `model.max_model_calls` | Model calls per question, including the retry (1 to 100) | 12 | 12 |
+| `model.max_searches` | Searches per question (1 to 50) | 6 | 6 |
+| `model.timeout_s` | Seconds per question | `KESTREL_TIMEOUT_S` (120) | 300 |
+| `privacy.classification` | `confidential` allows only on-device models and MCP servers; `public` and `internal` behave the same | `internal` | `confidential` |
+| `privacy.on_personal_information` | `redact` replaces personal details with placeholders; `block` refuses the question | `redact` | `block` |
+| `privacy.extra_patterns` | Extra screening patterns, each a `kind` label and a regular expression `pattern` | none | none |
+| `privacy.audit_question_text` | `redacted` stores the screened question in the audit log; `none` stores only a digest | `none` | `none` |
+| `privacy.retention_days` | Age at which `kestrel audit prune` removes audit rows (1 to 3650) | 30 | 30 |
+| `verification.on_failure` | `withhold` hides an answer that fails the checks; `warn` shows it with the failures | `withhold` | `withhold` |
+| `verification.max_repairs` | Retries allowed when the checks fail (0 to 3) | 1 | 1 |
+| `evaluation.gold` | The expected-answer file for the evaluation runner | none | `eval/gold.yaml` |
+| `examples` | Up to six example questions of at most 120 characters, shown as buttons in the web app and by `kestrel bots --examples` | none | none (`kestrel-products` has four) |
 
-```
-uv run kestrel ingest --bot staff-policies
-uv run kestrel ask --bot staff-policies "How many days of annual leave does an employee with 7 completed years of service get?"
-```
+## Optional extras
 
-Ingest reports each file's status (`current`, `pending`, `blocked`) and any hidden-text findings.
-
-## 7. Evaluate
-
-Use the product bot's format to write `eval/gold.yaml`: expected status, facts, conditions, forbidden statements and expected source. Run it with:
-
-```
-uv run python -m eval.run_eval --bot staff-policies --set reworded --gold bots/staff-policies/eval/gold.yaml --models ollama:gpt-oss:20b
-```
+- **A skill** is `bots/<id>/skills/<name>/SKILL.md`: front matter with `name` and a one-line `description`, then a short procedure. The model reads it when relevant; it is guidance and cannot be cited. See `staff-policies/skills/leave-entitlement/`.
+- **An MCP server** (a separate program offering tools to the model) must first be approved by a person in `config/mcp_servers.yaml`, with its command, allowed tools, `on-device` or `external` location, and a statement that the tools only read. The assistant then lists it by name. A `confidential` assistant refuses an `external` one. The model may cite a tool result, but the rule itself must still be cited from a document.
+- **An evaluation**: write `bots/<id>/eval/gold.yaml` in the same format as the staff example (expected status, facts that must appear, statements that must not, expected source), then run `uv run python -m eval.run_eval --bot <id> --questions bots/<id>/eval/gold.yaml`.
 
 ## Things to know
 
-- A full date ("11 March 2026") or a bare year in a question is read as ordinary content when every document family in the bot's collections has one edition, as in `staff-policies`. Once a family has two approved editions, such a question gets a request to clarify whether it means an edition; say "as of 2026-03-11" or "under the 2026 edition" to choose one.
-- A result from an approved MCP tool is labelled `t1`, `t2`, ... and can be cited like an excerpt: its quote must be word for word and its numbers (for example a working-day count) then count as evidence. The policy rule itself still needs a citation of a document excerpt.
-- Operator actions (ingest, block, unblock, audit verify and prune) need the separate `operator` role. No bot audience, including `staff`, grants them.
+- One invalid `bot.yaml` stops `kestrel bots` and the web app's assistant list until it is fixed, so a mistake is never silently skipped.
+- A year or date in a question is ordinary text unless some document family in the assistant's collections has two approved editions; then the assistant asks whether an edition is meant.
+- To withdraw a document at once: `uv run kestrel docs block <document-id> --reason "..."`. It stays blocked across ingests until `kestrel docs unblock`.

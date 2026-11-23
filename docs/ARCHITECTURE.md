@@ -1,316 +1,176 @@
 # Kestrel Assistant: architecture
 
-The implementation is described here, with its design in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) and the proposed production setup in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
+How the prototype is built and why. It assumes you have read the [README](../README.md); the proposed production setup is in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
 
-## 1. Goals
+## 1. What the system is
 
-The brief requires local ingestion of six documents in three formats, answers drawn only from those documents, section-level citations and declines when the documents are silent. It also asks for an honest evaluation and a production design.
+A Python application that answers questions from a fixed set of documents. It reads the documents once into a single SQLite file on the laptop ("ingestion"). For each question, a language model searches that file through tools I wrote and drafts an answer with word-for-word quotes; ordinary code then checks the quotes, numbers and sums before anything is shown.
 
-I designed the core to support more than Kestrel product questions. A new bot needs a folder of configuration and documents. The working `staff-policies` bot demonstrates that reuse without changes to the core.
-
-Design goals, in priority order:
-
-1. Run on a laptop with a few commands: no Docker, no services, one `.env`.
-2. Give agents answers they can read to callers, with a source quote checked by the application for each claim.
-3. Check models and documents with deterministic code.
-4. Remove personal information before any model, tool, log or store receives the question, and limit destinations by the bot's data classification (POPIA).
-5. Declare knowledge, prompt, tools, MCP servers, skills, model policy and privacy policy per bot.
-6. Select local Ollama, Ollama Cloud, Anthropic or OpenAI through one setting.
-7. Keep changes manageable during a live demonstration: one service entry point with thin front-end adapters.
-
-Authentication, multi-user concurrency at scale, Postgres, a vector server and OCR are outside the local implementation's scope. They are covered in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
-
-## 2. Shape of the system
-
-**Answering a question**
+The code calls a configured assistant a *bot*, so that word appears in file names and commands. One assistant covers the six Kestrel documents. A second, small one over three made-up staff policies shows that a new assistant needs configuration, not code (section 8).
 
 ```mermaid
 flowchart TD
-    CLI[CLI] --> SVC
-    UI[Streamlit UI] --> SVC
-    MCP[MCP server, stdio] --> SVC
-
-    subgraph SVC["AssistantService.ask(bot, question, principal)"]
+    FE["Command line, web app or MCP server"] --> S1
+    subgraph SVC["AssistantService.ask"]
         direction TB
-        A["1 Access check<br/>bot registry, roles"] --> B["2 Privacy gate<br/>redact or block, egress policy"]
-        B --> S["3 Scope<br/>current edition, or the one named"]
-        S --> C["4 Agent<br/>DeepAgents, built from bot.yaml"]
-        C --> D["5 Evidence checks<br/>deterministic code"]
-        D -- "issues, one repair turn" --> C
-        D --> E["6 Audit<br/>hash-chained record"]
+        S1["1 Screen the question<br/>for personal information"] --> S2["2 Check the user's role<br/>and where text may be sent"]
+        S2 --> S3["3 Choose which edition<br/>of each document to search"]
+        S3 --> S4["4 Model with tools<br/>writes a quoted answer"]
+        S4 --> S5["5 Checks in code"]
+        S5 -- "a check fails: one retry<br/>with the failures listed" --> S4
+        S5 --> S6["6 Record the outcome<br/>in the audit log"]
     end
-
-    C --> T1[search_documents]
-    C --> T2[get_table]
-    C --> T3[calculate]
-    C --> T4["bot's allow-listed<br/>MCP tools and skills"]
-    C <--> LLM["Chat model<br/>ollama, ollama-cloud,<br/>anthropic, openai"]
-
-    T1 --> DB
-    T2 --> DB
-    E --> DB
-    DB[("SQLite file<br/>documents, sections, chunks, findings,<br/>FTS5 index, sqlite-vec vectors, audit")]
+    S4 <--> T["Tools: search_documents,<br/>get_table, calculate,<br/>approved MCP tools"]
+    T --> DB[("SQLite file")]
+    S6 --> DB
 ```
 
-**Ingesting documents**
+Every question ends in one of six outcomes, counted separately in the log, the web app and the evaluation:
+
+| Outcome | Meaning |
+|---|---|
+| `answered`, `partial` | The documents answer all or part of the question |
+| `not_found` | The documents do not say (the README calls this *declined*) |
+| `refused` | A decision about a specific person or claim, or stopped by the role or privacy rules |
+| `withheld` | The checks still failed after one retry, so the answer is not shown |
+| `error` | Something failed, such as the model provider being unreachable |
+
+## 2. Where things live
+
+| Folder | What it does |
+|---|---|
+| `src/kestrel/service/` | `AssistantService`, the single entry point for every front end |
+| `src/kestrel/ingest/` | Format readers, the hidden-text scanner, edition and approval rules |
+| `src/kestrel/store/` | SQLite storage, the search filter, the audit log |
+| `src/kestrel/retrieval/` | Embeddings, combined search, reading editions and dates from a question |
+| `src/kestrel/agent/` | The model's tools, the calculator, the table-range lookup, the core prompt |
+| `src/kestrel/verify/` | The checks on an answer |
+| `src/kestrel/privacy/` | The personal-information screen |
+| `src/kestrel/llm/` | Model clients, tested models, prices, rules on where text may be sent |
+| `src/kestrel/bots/`, `contracts/` | Loading each assistant's folder; shared data types and interfaces |
+| `src/kestrel/interfaces/`, `app/` | The command line and MCP server; the Streamlit web app |
+| `bots/<id>/`, `config/` | One folder per assistant; model, price and MCP server settings |
+| `eval/` | The evaluation runner, grading, the workbook writer |
+
+The command line, web app and MCP server only parse input and format output; everything else happens in `AssistantService`, so a behaviour change is made once. Nothing under `src/kestrel/` names insurance, Kestrel or a document; `tests/test_domain_neutral.py` fails if it does.
+
+## 3. Ingestion
+
+`kestrel ingest` reads each assistant's documents from `data/source/<collection>/`. A *collection* is a named set of documents; an assistant lists the collections it may search.
 
 ```mermaid
 flowchart LR
-    F["Folder<br/>DOCX, PDF, XLSX, MD"] --> P["Parse<br/>structure, locators,<br/>rendering"]
-    P --> S["Scan<br/>hidden or injected text"]
-    S --> M["Manifest check<br/>approval, edition,<br/>effective dates"]
-    M --> K["Chunk<br/>sections, tables,<br/>table rows"]
-    K --> V["Embed<br/>on CPU"]
+    F["Source folder<br/>DOCX, PDF, XLSX, MD"] --> P["Read, keeping headings,<br/>tables and positions"]
+    P --> S["Remove text a<br/>reader cannot see"]
+    S --> M["Compare with the<br/>approved-document list"]
+    M --> K["Split into sections,<br/>tables and rows"]
+    K --> V["Embed on the CPU"]
     V --> DB[("SQLite file")]
-    S -. findings .-> DB
-    M -. "status: current, superseded,<br/>pending, blocked" .-> DB
 ```
 
-**How a bot is assembled**
+The README describes how each format is read. Every reader keeps headings, pages, tables and cell addresses, so a citation names a place a person can find, and tables are stored whole and row by row, so an answer can cite one row.
 
-```mermaid
-flowchart LR
-    Y["bots/&lt;id&gt;/bot.yaml"] --> R[Bot registry]
-    R --> KN["Knowledge<br/>collections, approval, scope"]
-    R --> PR["Prompt and skills"]
-    R --> TL["Tools and<br/>MCP servers by name"]
-    R --> MP["Model policy<br/>allowed providers, limits"]
-    R --> PP["Privacy policy<br/>classification, redaction,<br/>retention"]
-    G["config/mcp_servers.yaml<br/>centrally approved"] --> TL
-    KN --> AG[Agent for this bot]
-    PR --> AG
-    TL --> AG
-    MP --> AG
-    PP --> AG
-```
+**Hidden text.** The scanner removes text a reader could not see: marked hidden, under 3 points, off the page or under a shape, too little contrast against its actual background (table shading included), invisible Unicode characters, or reversed by direction-control characters. Each removal is recorded as a *finding* (`kestrel docs findings`). Wording aimed at an AI ("ignore previous instructions") is flagged too, and kept for review if visible. The rules look only at how text is rendered, never at which document it is in.
 
-### Module layout
+**Editions and approval.** Each assistant has a `manifest.yaml`, its list of approved documents. An entry binds a file's SHA-256 hash (a fingerprint of its exact bytes) to a family (the editions of one guide), an edition label, an effective date, the edition it replaces, and who approved it. Ingestion gives each file a status:
 
-```
-src/kestrel/
-  contracts/          shared Pydantic models and Protocols, one module per area (answers, documents,
-                      retrieval, bots, audit, evaluation, editions, service); import from kestrel.contracts
-  config.py           settings from .env
-  errors.py           KestrelError and its user-safe categories
-  editions.py         deterministic comparison of two editions of a document (no model)
-  service/            AssistantService, the only entry point used by front ends:
-                      ask.py (the question path), answering.py (agent, checks, repair), documents.py
-                      (search, sections, ingest, block), editions.py, doctor.py, runtime.py (shared parts)
-  bots/               bot.yaml loader with ${ENV} expansion, MCP server list, registry
-  ingest/             parsers/ (docx, pdf, xlsx, markdown), scan/ (visibility, instructions,
-                      bidirectional text), manifest, chunker, pipeline
-  store/              SQLite schema, document repository, eligibility filter, audit log, vector index
-  retrieval/          embeddings, hybrid search, edition and date scope
-  llm/                provider:model resolution, tested-model catalogue, pricing, egress policy
-  privacy/            redaction rules and the screen
-  agent/              agent builder, read-only backend, tools, calculator, MCP tool loader,
-                      prompt, budget and retry middleware, runner
-  verify/             deterministic evidence checks, quote and number matching
-  interfaces/         cli.py (+ cli_admin, cli_render, cli_runtime), mcp_server.py (+ admission, models)
-app/streamlit_app.py  Streamlit entry point; app/kestrel_app/ helpers, app/views/ pages
-bots/<bot-id>/        bot.yaml, prompt.md, manifest.yaml, skills/, eval/gold.yaml
-data/source/<collection>/
-eval/                 evaluation runner, grading, human review, workbook, adversarial set
-tests/
-```
+- `current`: approved and in force. Only these are searched by default.
+- `superseded`: approved, but replaced by a later approved edition. Searched only when a question names it, or a date when it was in force.
+- `pending`: not listed, not approved, or changed since approval. Never searched.
+- `blocked`: withdrawn with `kestrel docs block`. Never searched, and stays blocked across ingests.
 
-Rule: front ends (`interfaces/` and `app/`) reach the application only through `AssistantService`, using the contracts, the error types and the settings. Nothing under `src/kestrel/` mentions insurance, Kestrel products or any document by name; `tests/test_domain_neutral.py` enforces this.
+I chose a hand-maintained list because which guide applies today is a business decision, not something a model or a file date should settle. The cost is that someone must update it for every new edition, and any change to a file takes it out of search until it is re-approved. Ingestion is safe to repeat; unchanged files are left alone.
 
-## 3. Bots as configuration
+## 4. Search
 
-```yaml
-# bots/kestrel-products/bot.yaml
-id: kestrel-products
-name: Kestrel Product Assistant
-description: Answers questions about group life, disability and funeral cover from approved guides.
-audience: [call-centre-agent, broker]          # roles allowed to use this bot
+Search runs inside the SQLite file in two ways: keyword ranking (SQLite's FTS5 index) for exact terms such as "Option B", and meaning-based ranking over `bge-small-en-v1.5` embeddings stored with the `sqlite-vec` extension. Reciprocal rank fusion merges the two lists. Before either runs, one filter (`src/kestrel/store/eligibility.py`) limits candidates, inside the SQL, to documents in the assistant's collections that are neither blocked nor pending and are the right edition, so nothing outside the assistant's reach can appear. Without the vector extension, search falls back to keywords and `kestrel doctor` says so.
 
-knowledge:
-  collections: [kestrel-products]              # the only documents this bot can search
-  approval: required                           # a document must be listed in manifest.yaml
-  default_scope: current                       # superseded editions only on explicit request
+**Choosing the edition.** By default only `current` documents are searched, so the model never sees the 2025 group life figures unless asked. A question naming one edition ("under the 2025 guide") or one date with a cue ("as of 2025-06-01") switches to that edition, or to the one in force on that date; two editions of a guide are never mixed. A question naming two editions, or asking to compare them, is asked to name one. A bare year that could mean an edition or an event is asked to clarify, but only if a guide in the assistant's collections has two approved editions; otherwise it is ordinary text.
 
-prompt: prompt.md                              # persona and domain guidance
-tools: [search_documents, get_table, calculate]
-mcp_servers: []                                # names from config/mcp_servers.yaml
-skills: []                                     # skills/ exists; switched off (see below)
+## 5. Answering
 
-model:
-  default: ${KESTREL_MODEL}
-  allowed_providers: [ollama, ollama-cloud, anthropic, openai]
-  max_model_calls: 12
-  max_searches: 6
+The answering step uses LangChain's DeepAgents framework: the model calls tools as it chooses, then returns a structured answer with a status, the text, citations (label, exact quote, the claim it supports), calculations (expression, result, and the passage that states the rule), caveats, and a reason when it declines. The model has three tools:
 
-privacy:
-  classification: internal                     # confidential => on-device destinations only
-  on_personal_information: redact              # or: block
-  audit_question_text: redacted                # or: none
-  retention_days: 30
+- `search_documents` returns up to six passages labelled `c1`, `c2`, ... with file, location and status.
+- `get_table` returns every row of a passage's table, labelled `c4.r1`, `c4.r2`, .... Given the number from the question, it finds in code the row whose range contains it (ranges written as lower and upper columns, or as text such as "250 to 499" or "1 000 or more"), and says so if no row does. Left to compare numbers itself, the model misread which band 320 members falls in.
+- `calculate` does exact decimal arithmetic, rounded to two places, half up.
 
-verification:
-  on_failure: withhold                         # or: warn
-  max_repairs: 1
-evaluation:
-  gold: eval/gold.yaml
-examples:                                      # up to six, shown as buttons in the app
-  - What is the maximum group life cover per member?
-```
+An assistant may also use tools from an approved MCP server (the Model Context Protocol, a standard way for a separate program to offer tools to a model); their results are labelled `t1`, `t2`, .... The framework's own file, shell and sub-agent tools are removed, and one budget per question limits model calls, searches and time.
 
-The configuration controls both access and behaviour:
+The shared prompt (`src/kestrel/agent/prompt.py`) requires exact quotes, the calculator for every sum, and keeping a rule's conditions ("the lower of", "working days"). It tells the model to refuse a decision about an actual person or claim but to answer a question that uses example figures. Each assistant's `prompt.md` follows it.
 
-A collection id is stamped on every document, chunk and vector. Search always filters by the bot's collections in SQL, before ranking. A bot cannot retrieve another bot's documents, and `tests/test_isolation.py` proves it.
+## 6. The checks on an answer
 
-A bot gets only the tools, MCP servers and skills it names. MCP servers are defined once in `config/mcp_servers.yaml` (command or URL, allowed tool names, whether it runs on-device or externally, and a reviewer's statement that the listed tools only read). A server is approved centrally and bots opt in by name. An allow-list limits which tools can be called; it cannot make a tool harmless, which is why approval is a human step. Every argument sent to an MCP tool passes the privacy screen first, and the result is wrapped as untrusted data, exactly like a document excerpt.
+Plain code in `src/kestrel/verify/checks.py` checks the answer against what the model was shown for this question. Quotes and numbers are compared after normalising spacing, punctuation, case and number formats ("R5 million" equals "R5 000 000").
 
-Procedural know-how (how to read a banded table, how to handle two editions) lives in `SKILL.md` files loaded through DeepAgents' skills support with a read-only backend rooted at the bot's folder. The agent has no write, shell or sub-agent tools; tests assert both the tool inventory and that paths outside the skills folder cannot be read. The product bot ships two skills but has them **switched off**: measured on the test questions they changed no grade and added about a third more input tokens. The staff bot keeps its `leave-entitlement` skill.
+| Check | What it requires |
+|---|---|
+| `schema` | An `answered` or `partial` answer has text and cites at least one document passage; no answer mentions its own drafts or checks |
+| `label_retrieved` | Every cited label was shown to the model |
+| `quote_verbatim` | Every quote is word for word in the passage, row or tool result it cites; an ellipsis may skip words |
+| `table_row_cited` | A citation into a table names one row |
+| `numbers_grounded` | Every number in the answer appears in a cited source, the question, or a checked calculation |
+| `calculation_recomputed` | Each calculation recomputes to its stated result, takes its inputs from cited sources or the question, and names the passage stating the rule |
+| `decline_reason` | A decline gives a reason and does not follow a calculation |
+| `source_status` | No citation points at a pending, blocked, or (unless asked for) superseded document; repeated just before returning, so a document blocked mid-question still stops the answer |
 
-A bot over internal policies can be `confidential` and therefore locked to on-device models, while the product bot uses a hosted model.
+A cited MCP tool result must be quoted exactly, and its numbers then count as evidence, but it cannot stand alone: the rule must still be cited from a document. Caveats are optional, so a caveat with an unsupported number, an uncited label, or talk of drafts is dropped before the checks run, and recorded as a warning.
 
-The repository ships two bots: `kestrel-products` (the assessed one) and `staff-policies`, a small demonstration bot over three clearly labelled fictitious policy documents. It is `confidential`, allows only local Ollama, blocks (rather than redacts) questions with personal details, keeps only a digest of each question in the audit log, and uses an on-device MCP server, `workday-calendar`, from `examples/mcp_servers/`. The 15-question evaluation uses only `kestrel-products` and only the supplied documents. [ADDING_A_BOT.md](ADDING_A_BOT.md) walks through the staff bot field by field.
+**On failure** the model gets one retry with each failure listed in plain words. If the checks still fail, the assistant's `verification.on_failure` setting decides: `withhold` (the default) shows "This answer could not be confirmed against the sources" and the passages found; `warn` shows the answer with the failures. I chose code over a second model as judge because a second model can be wrong in the same way; code either finds the quote or does not.
 
-## 4. Ingestion
-
-DOCX parsing keeps the heading tree from styles, numbered sections and tables, and resolves run formatting through the style chain. PDF parsing records pages and headings and rebuilds tables cell by cell from positioned text. XLSX parsing covers every sheet, finds table regions by layout and keeps header rows and cell addresses. Markdown parsing keeps headings and pipe tables, with HTML comments retained as hidden spans. Every text span keeps what is needed to judge visibility (colour, size, hidden flags, position, background).
-
-The scanner removes text a reader could not see (too little contrast, tiny font, hidden runs, invisible render mode, off-page, covered by a shape drawn over it, Unicode tag characters, text reversed by bidirectional controls) from searchable content and records it as a finding. Contrast is judged against the resolved background, including table-cell shading, so white header text on a dark cell is kept while white text on a white page is not. Wording addressed to an AI assistant is flagged, in hidden and visible text. The rules are generic; none names a document.
-
-Each section stores a human-readable citation locator: `file > section 4.2 "heading"`, `file > page 3 > table`, `file > sheet "name", cells A4:E10, row 3`.
-
-A table is stored whole as structured rows and also chunked row by row with its header, so a search hit can lead to the full table and a citation can name one row.
-
-`manifest.yaml` records document status. It binds each file's SHA-256 to a family, edition, effective date, what it supersedes and an approval. Ingest marks each document `current`, `superseded`, `pending` or `blocked`. Only `current` documents are searched by default. A changed file no longer matches its approved hash and drops to `pending`.
-
-Re-running ingest changes nothing unless files or the manifest changed.
-
-## 5. Retrieval
-
-Hybrid search inside one SQLite file: FTS5 (BM25) for exact terms such as "Option B" or amounts, and `sqlite-vec` cosine search over `bge-small-en-v1.5` embeddings computed on CPU with fastembed. Results are fused by reciprocal rank. Collection, status and edition filters are applied inside the SQL of both rankers, before ranking, by one eligibility function.
-
-I chose this because exact terms matter as much as meaning in rule documents. It needs no extra services, documents stay on the machine for indexing, and all three front ends can read the file at once (WAL, one short-lived connection per operation). The vector index sits behind a `VectorIndex` protocol, so a managed search service replaces it without touching callers. If the vector extension cannot load, search falls back to keywords only and `kestrel doctor` says so.
-
-Superseded editions are invisible by default. A question that names one edition or one date ("under the 2025 guide", "as of 2025-06-01") *switches* the scope to the edition in force then; it never mixes two editions in one result set. A question that names two editions gets a request to ask about one at a time. A bare year that could be an event date or an edition gets a request to clarify, but only when some document family in the bot's collections has more than one approved edition; otherwise the year is ordinary content. Blocked and pending documents are never searchable, whatever the scope.
-
-Comparing editions is done by code, not by the model: `kestrel docs compare` and the Documents page align sections by heading and list the values that changed.
-
-## 6. Answering
-
-A DeepAgents agent, restricted to read-only tools, returns a structured answer:
-
-```
-status        answered | partial | not_found | refused
-answer        short, plain language, suitable to read to a caller
-citations     [{label: "c3", "c7.r4" or "t1", quote: "<verbatim text>", supports: "<the claim it backs>"}]
-calculations  [{expression, result, rule: "<label of the excerpt stating the formula>"}]
-caveats       conflicts, assumptions, limits
-reason        required for not_found and refused
-```
-
-Tools: `search_documents` (labelled excerpts `c1, c2, ...`, with a search budget and duplicate guard; a whole-table hit is shown as labelled rows), `get_table` (every row of the table an excerpt belongs to, each row labelled `c7.r1, c7.r2, ...` with its header, for band lookups) and `calculate` (a safe decimal arithmetic evaluator with defined rounding; the model never does sums itself). Results of a bot's approved MCP tools are labelled `t1, t2, ...`.
-
-The prompt requires the answer to carry the conditions attached to a rule (for example "the lower of", "aims to", "working days", "after receipt of all documents") and to quote them. It separates a decision about an actual person or claim (refused, with who to ask) from a question with example figures (answered as an illustration of the rule).
-
-**Requirements by status**
-
-| Status | Meaning | Must have |
-|---|---|---|
-| `answered`, `partial` | the documents support the answer | at least one citation; every check below passes |
-| `not_found` | the documents do not establish an answer | a reason worded as "the documents do not say", never as a fact about the business; citations optional |
-| `refused` | outside the bot's purpose or privacy policy | a reason and who to ask |
-
-Two further outcomes are set by the application, not the model: `withheld` (evidence checks failed after repair) and `error`. All six are reported separately in the audit trail and in evaluation, so a retrieval miss, a correct decline and a withheld answer are never counted as the same thing.
-
-**Evidence checks** run after the model and are plain code (`verify/checks.py`). Each issue is reported under its check name:
-
-1. `label_retrieved`: every cited label was actually shown to the model in this request;
-2. `quote_verbatim`: every quote is found verbatim in the excerpt, row or tool result it cites (after whitespace, punctuation and number-format normalisation; an ellipsis may skip words);
-3. `table_row_cited`: a citation into a table names a row, not the whole table, so the quote must come from the row relied on;
-4. `numbers_grounded`: every number in the answer and caveats appears in a cited excerpt or tool result, the question, or a recomputed calculation (digits, grouped digits, "R5 million", number words, and a percentage's fraction such as 75% and 0.75 are normalised);
-5. `calculation_recomputed`: every reported calculation is recomputed, each operand is traced to a cited source or the question, and the calculation names the excerpt that states the rule;
-6. `decline_reason`: a decline carries a reason and does not follow hidden arithmetic;
-7. `source_status`: no citation points at a superseded, pending or blocked document unless the question asked for that edition.
-
-A `schema` check comes first: `answered` and `partial` need answer text and at least one citation.
-
-**Tool results as evidence.** A result from an approved MCP tool (for example a working-day count) can be cited by its `t` label. Its quote must be verbatim and its numbers then count as evidence, also as calculation operands. A tool result is not a document: for a bot that has documents, an answer must cite at least one document excerpt, and tool results can support it but never stand alone. Numbers taken from a source must match it exactly after format normalisation; only the result of a recomputed calculation may be rounded.
-
-On failure the agent gets one repair turn with the specific issues. If it still fails, the bot's policy decides: `withhold` (the user sees "could not confirm against the sources", with the retrieved sections to read) or `warn`. Issues fixed by the repair stay in the report as warnings. The outcome is always shown and always audited, together with the steps taken (privacy gate, scope, each tool call, checks, repair).
-
-The checks establish that evidence exists, is quoted exactly, comes from an approved current source, and that the arithmetic is right. A sentence can still misread that evidence: it can drop a condition from the right passage or use the wrong rule from the right table. Every front end therefore says "evidence checks passed", never "verified", and shows the quotes beside the answer. Faithfulness is measured in evaluation (section 10) and, in production, by sampled human review. Fully deterministic validation of free prose is out of scope.
+**What the checks do not prove.** That the sentence reads the evidence faithfully: an answer can quote the right passage and still drop "working days". So the front ends say "evidence checks passed", never "verified", and show the quotes beside the answer. Faithfulness is measured in the evaluation ([EVALUATION.md](EVALUATION.md)) and in production would need sampled human review.
 
 ## 7. Privacy and security
 
-**Privacy gate, before anything else.** A question is normalised and screened for South African ID numbers (date and checksum validated), phone numbers, emails, labelled bank, card, policy and reference numbers, labelled names and dates of birth, plus patterns a bot adds under `privacy.extra_patterns`. Per bot policy the text is redacted or the request is blocked. The model, MCP tools, the audit log and the UI history receive only the screened text. If screening fails, the request fails closed.
+**The privacy screen** (`src/kestrel/privacy/`) runs on every question first; the model, MCP tools, the audit log and the web app see only screened text. It is pattern matching: South African ID numbers (checked by birth date and check digit) and any other 13-digit number, phone numbers, email addresses, labelled account, card, policy, member, claim and passport numbers, labelled names and dates of birth, names after a title, and patterns an assistant adds in `privacy.extra_patterns`. Each assistant either replaces matches with placeholders such as `[POLICY_NUMBER]` or refuses the question. If screening fails, the question is refused. It misses an unlabelled name ("my colleague Thandi"), a description of someone's health, and numbers written in words, which is why the audit log keeps only a digest of the question unless an assistant opts in to storing the screened text.
 
-Pattern screening will miss an unlabelled name or a free-text description of someone's health. Some personal information will get through. That residual risk is why the audit log keeps only a digest of the question unless a bot opts in to storing the screened text with a retention period, and why production adds entity recognition and an in-region redactor. The gate screens what users type; source documents are assumed to be approved business content and are checked for hidden text, not for personal information.
+**Where text may be sent.** Local Ollama counts as on-device only at a loopback address and for a model Ollama does not forward to its cloud; hosted providers are external; an MCP server's location is declared when it is approved. Before each question the code refuses a provider the assistant does not allow, and refuses a `confidential` assistant anything external. Provider addresses are fixed in code, so environment variables cannot redirect traffic.
 
-**Egress policy.** Every destination that could receive text is tagged `on-device` or `external`: model providers, MCP servers, and the Ollama endpoint (on-device only when its host is loopback). A `confidential` bot refuses any external destination; the check runs when the bot is loaded and again per request, before any text is sent. Base URLs and keys are passed explicitly, so provider environment variables cannot redirect traffic past the policy. Framework tracing to third-party services is switched off in code. The Streamlit app listens on localhost only.
+**Untrusted content.** Passages and tool results are marked as data, not instructions; the model has no tool that changes anything; and an injected instruction could at most produce text that must still be quoted from an approved document. MCP servers are approved once in `config/mcp_servers.yaml`, with a reviewer's statement that the allowed tools only read, and every argument sent to them is screened.
 
-On-device processing addresses only part of POPIA. The organisation still needs operator agreements, cross-border transfer safeguards, retention and deletion processes, and breach handling. These are set out condition by condition in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
+**Access.** An assistant's `audience` lists the roles that may use it, checked on every service method, not only asking. Ingesting, blocking and audit administration also need a separate `operator` role, so being allowed to use an assistant is not enough; the MCP server does not offer these actions at all. Locally the user and roles come from `KESTREL_USER` and `KESTREL_ROLES` in `.env`: a setting, not a login.
 
-**Purpose limits.** The assistant gives general product information. It refuses member-specific decisions (will this claim be paid, is this person covered) and says who to ask.
+**The audit log** records every question, refusal, error, block and unblock: assistant, user, screened question or digest, kinds of personal information removed, passages retrieved, citations with quotes, outcome, failed checks, model, tokens, cost and time. Each row includes the hash of the row before, so `kestrel audit verify` detects an edited or deleted row, but someone with write access could rebuild the whole chain; production would keep the latest hash out of their reach. After a block, `kestrel docs affected` lists past answers that cited the document.
 
-**Untrusted content.** Documents and MCP tool output are data. Hidden text is stripped at ingest, excerpts and tool results are wrapped with a data-only notice, the agent has no tools with side effects, and the evidence checks limit what an injected instruction could achieve to text that must still be quoted from an approved source.
+## 8. Assistants as configuration
 
-**Audit.** One append-only, hash-chained table: bot, channel, principal, screened question or its digest, retrieved excerpts, citations, calculations, outcome and its reason, steps, model, tokens, cost, latency. Retention is per bot; pruning writes a checkpoint row that carries the chain forward. `kestrel audit verify` detects an edited or deleted row. This is limited tamper evidence: someone with write access to the file could rebuild the whole chain, so production anchors the chain head in a separate write-once store. `kestrel docs affected` lists every past answer that cited a document, which is what an operator needs after blocking one.
+An assistant is a folder `bots/<id>/` holding `bot.yaml` (who may use it, its collections, tools, MCP servers, models, privacy rules and failure policy), `prompt.md` (its instructions), `manifest.yaml` (its approved documents), and optionally `skills/` and `eval/gold.yaml` (its expected answers). A *skill* is a short Markdown procedure, such as how to read a banded table, that the model may read when relevant; it is guidance and cannot be cited.
 
-**Access.** Every service call carries a `Principal` (user, roles, channel), and the role check applies to every method, not only `ask`: search, section lookup, document listing and audit reads are all scoped to bots the principal may use. Operator actions (ingest, block, unblock, audit verify and prune) also need the separate `operator` role, so no bot audience grants them. The MCP server does not expose operator actions at all. The local application takes the principal from `KESTREL_USER` and `KESTREL_ROLES`; production maps it from single sign-on. The role checks are implemented; single sign-on still needs to be connected.
+Isolation is enforced in code, not by the prompt. Every stored passage and vector carries its collection, and the search filter limits every query to the assistant's collections in SQL (`tests/test_isolation.py`). An assistant gets only the tools and MCP servers it names and the providers it allows, and reads skills through a read-only view of its own `skills/` folder. Unknown fields in `bot.yaml` are errors, and paths cannot leave the folder.
 
-**Secrets.** Keys only in `.env`, never logged, `.env` ignored by git; `kestrel doctor` reports which keys are present without printing them.
+The product assistant's two skills are switched off: on the test questions they changed no grade and added about a third more input tokens. The staff-policies assistant is `confidential` (local Ollama only), refuses questions with personal information, and uses an on-device MCP server, `workday-calendar`, that counts working days.
 
-## 8. Models and configuration
+I chose this because an internal policies assistant or IT help desk will likely follow, and each should be a reviewed folder, not a new project. [ADDING_A_BOT.md](ADDING_A_BOT.md) shows how to add one.
 
-One setting selects the model: `KESTREL_MODEL=<provider>:<model>`, overridable per command with `--model`.
+## 9. Models and settings
 
-| Provider prefix | Runs where | Needs |
+`KESTREL_MODEL=<provider>:<model>` in `.env` (or `--model`) chooses the model; a `bot.yaml` can use it (`${KESTREL_MODEL}`) or fix its own. The prefixes are `ollama` (this machine), `ollama-cloud`, `anthropic` and `openai`, each needing its API key except local Ollama.
+
+Each provider is a small builder around a LangChain chat model in `src/kestrel/llm/models.py`, so another provider is another builder. `config/models.yaml` lists the models the answers were evaluated with, and `kestrel doctor` warns about any other. Token counts are priced from `config/pricing.yaml`; a model with no price shows as unknown, not zero.
+
+## 10. Decisions and trade-offs
+
+| Decision | Why | What I gave up |
 |---|---|---|
-| `ollama` | this machine | Ollama running, model pulled |
-| `ollama-cloud` | Ollama Cloud | `OLLAMA_API_KEY` |
-| `anthropic` | Anthropic API | `ANTHROPIC_API_KEY` |
-| `openai` | OpenAI API | `OPENAI_API_KEY` |
+| One SQLite file, keyword and vector search | Nothing to install; documents stay local; exact terms matter as much as meaning | Not a multi-user search service |
+| A model that calls tools, not one prompt with pasted passages | Table lookups and arithmetic are where pasted passages fail | Two or three model calls per question |
+| Range lookup and arithmetic in code | The model misread bands; code does not | Only recognised range layouts are handled |
+| Quotes and numbers checked by code, not a second model | An invented quote or figure is caught, not just made unlikely | A paraphrased correct answer is sometimes withheld |
+| Approved-document list with hashes | Which edition is current is a business decision | Someone maintains it; any file change needs re-approval |
+| Assistants as configuration folders | New assistants without code, reviewable in git | A format to keep stable |
+| DeepAgents on LangChain | One framework across four providers, with skills and MCP | A dependency to keep pinned |
 
-Resolution goes through LangChain chat models, so adding Azure OpenAI, Bedrock or Vertex is a mapping entry, not a new client.
+## 11. What production would replace
 
-Tool calling and structured output vary by model, not just by provider. `config/models.yaml` names the models the answers were evaluated with: `claude-haiku-5-5` and `claude-sonnet-5-5` (Anthropic), `gpt-6.1-sol` (OpenAI), `kimi-k3.1-pro`, `deepseek-v4.1-flash` and `gpt-oss:20b` (Ollama Cloud), and `gpt-oss:20b` (local Ollama). The answer is returned through a tool call. Some providers reject a forced tool choice, so the call is retried once with an automatic choice and the model remembered; an answer a model writes as JSON text is accepted if it validates, and still goes through every check. One budget per question covers model calls, searches, repairs and wall-clock time. An untested model works if it supports tool calling; `kestrel doctor` says whether the configured model is on the tested list.
+Each part below sits behind an interface in `src/kestrel/contracts/`, so it can be swapped without changing its callers.
 
-The service API is synchronous. It runs the agent on an event loop it owns, so Streamlit reruns and the MCP server's own loop never share loop-bound clients. Token usage is read from each response and priced from `config/pricing.yaml`, giving a measured cost per question; a model without a price is reported as unknown, never as zero. `kestrel doctor` checks the environment end to end and prints the exact fix for anything missing.
-
-## 9. Seams for scale
-
-Each boundary has a `Protocol` in `kestrel.contracts` and one local implementation:
-
-| Seam | Prototype | Production direction |
+| Part | Prototype | Production |
 |---|---|---|
-| `DocumentRepository`, `AuditLog` | SQLite | managed relational database |
-| `VectorIndex` | sqlite-vec | managed hybrid search service |
-| `Embedder` | fastembed on CPU | larger multilingual model, in region |
-| chat model | LangChain provider | LLM gateway with routing, quotas, fallback |
-| `PrivacyScreen` | rules | rules plus NER plus in-region redactor |
-| `Principal` source | local settings | single sign-on and group mapping |
-| bot registry | folders in git | reviewed config repo or admin service |
-| MCP server | stdio | streamable HTTP behind OAuth |
+| Documents and audit log | SQLite | Managed database; latest audit hash in write-once storage |
+| Vector search and embeddings | `sqlite-vec`, small model on the CPU | Managed hybrid search, larger model in-region |
+| Model access | Direct provider calls | Gateway with quotas and fallback |
+| Privacy screen | Patterns | Patterns plus entity detection |
+| User identity | `.env` settings | Single sign-on with group-to-role mapping |
+| MCP server | Local process | HTTP behind OAuth |
 
-[PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md) maps each seam to Azure, AWS and Google Cloud services and covers residency, POPIA conditions, monitoring, cost and rollout.
-
-## 10. Evaluation
-
-Details and commands are in [EVALUATION.md](EVALUATION.md).
-
-- `eval/run_eval.py` runs the 15 questions through `AssistantService` for one or more models and runs, and writes a CSV, a JSONL trace, a summary, a review file and a filled copy of `KA_Test_Questions.xlsx`. A search-only pass measures where the expected section ranks without any model.
-- Automatic grading against a gold file is kept separate from the human assessment column; both are reported.
-- The gold file holds, per question: the expected status, the facts that must appear, the **conditions that must not be dropped** (for example "lower of", "working days", "accidental death is covered immediately"), statements that must not appear, and the section that should be cited. This is where answer faithfulness is measured.
-- Outcomes are counted separately: correct, partially correct, incorrect, correctly declined, incorrectly declined, withheld by the evidence checks, error, and retrieval miss (the gold section was never retrieved).
-- A set of ten reworded questions, written without sight of any model answer, is the nearest thing to an independent check, since the 15 questions were also the development set.
-- An adversarial set of 21 fixtures with hidden instructions measures the scanner and whether a model follows a planted instruction.
-
-## 11. Decisions and trade-offs
-
-| Decision | Why | Cost accepted |
-|---|---|---|
-| SQLite + FTS5 + sqlite-vec in one file | runs anywhere, one thing to back up, concurrent readers | not a distributed index; replaced behind the seam |
-| Agent with tools, not single-shot RAG | band lookups and arithmetic need tools | several model calls per answer |
-| Quote-backed citations and code checks | hallucination becomes detectable, not just unlikely | some good answers are withheld when a quote is paraphrased |
-| Edition status in a manifest | "which guide is current" is a governance fact, not a model guess | someone must maintain the manifest |
-| Bots as folders of YAML | new use cases without code; reviewable in git | a schema to keep stable |
-| Local CPU embeddings | documents stay on the machine; free | smaller model than production would use |
-| DeepAgents on LangChain | one agent runtime across four providers, skills and MCP support | a framework dependency to pin |
-| Product-bot skills off | no measured gain on the test questions | the know-how lives in the prompt instead |
+[PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md) maps each to Azure, AWS and Google Cloud and covers residency, POPIA, monitoring, cost and rollout.
