@@ -26,8 +26,9 @@ from kestrel.contracts.documents import DocumentRecord, DocumentStatus, Finding
 from kestrel.contracts.editions import EditionComparison
 from kestrel.contracts.retrieval import SearchResult, SectionView
 
-OPERATOR_ROLE = "staff"
-"""Role required, in addition to bot access, for operator methods."""
+OPERATOR_ROLE = "operator"
+"""Role required, in addition to bot access, for operator methods. It is its own role, so no bot
+audience (such as `staff`) grants document blocking, ingestion or audit administration."""
 
 MAX_QUESTION_CHARS = 2000
 """Longer questions are rejected with `InvalidInputError` before screening."""

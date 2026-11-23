@@ -8,6 +8,7 @@ from kestrel.contracts._base import Channel, Classification, Frozen, Locality, P
 from kestrel.contracts.answers import (
     LABEL_PATTERN,
     REPAIRED_PREFIX,
+    TOOL_LABEL_PATTERN,
     AgentAnswer,
     AnswerStatus,
     AnswerStep,
@@ -22,6 +23,7 @@ from kestrel.contracts.answers import (
     ResolvedCitation,
     Screened,
     StepKind,
+    ToolResult,
     Usage,
     repaired_detail,
 )
@@ -100,6 +102,7 @@ __all__ = [
     "MAX_QUESTION_CHARS",
     "OPERATOR_ROLE",
     "REPAIRED_PREFIX",
+    "TOOL_LABEL_PATTERN",
     "AgentAnswer",
     "AnswerStatus",
     "AnswerStep",
@@ -171,6 +174,7 @@ __all__ = [
     "TableRowView",
     "TableView",
     "TextSpan",
+    "ToolResult",
     "Usage",
     "ValueChange",
     "VectorIndex",

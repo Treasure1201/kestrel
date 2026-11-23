@@ -12,6 +12,7 @@ import unicodedata
 from collections.abc import Sequence
 
 from kestrel.contracts import Finding, ParsedDocument, ParsedSection, ParsedTable, TableRow, TextSpan
+from kestrel.ingest.scan.bidi import BidiRegion, remove_reordered
 from kestrel.ingest.scan.injection import detect_instructions
 from kestrel.ingest.scan.visibility import Invisibility, invisibility, primary_kind
 from kestrel.ingest.text import clean_text, render_table
@@ -84,7 +85,10 @@ class _Scan:
                 kept.append(span)
         close_run()
         kept.extend(pending_space)
-        text, smuggled = strip_format_characters("".join(span.text for span in kept))
+        joined, regions = remove_reordered("".join(span.text for span in kept))
+        for region in regions:
+            self.report_bidi(region, locator)
+        text, smuggled = strip_format_characters(joined)
         if smuggled.strip():
             self.report_hidden(smuggled, [Invisibility("hidden_text", "encoded in invisible Unicode tag characters")], locator)
         return kept, text
@@ -103,6 +107,30 @@ class _Scan:
         )
         if instruction:
             self.report_instruction(text, instruction.rules, locator, hidden=True)
+
+    def report_bidi(self, region: BidiRegion, locator: str) -> None:
+        """Report one bidirectional control region (see `scan.bidi` for the rule)."""
+        if not region.reorders:
+            self.finding(
+                locator,
+                "bidi_control",
+                "info",
+                f"A {region.description} was removed; it does not change the order of this text, which was kept.",
+                region.content,
+            )
+            return
+        instruction = detect_instructions(region.content)
+        self.finding(
+            locator,
+            "bidi_control",
+            "high" if instruction else "warning",
+            f"Text inside a {region.description} is displayed in reverse order (a reader sees "
+            f"\"{excerpt(region.displayed, 80)}\"), so what a reader sees differs from what is stored; "
+            "it was removed from searchable content.",
+            region.content,
+        )
+        if instruction:
+            self.report_instruction(region.content, instruction.rules, locator, hidden=True)
 
     def report_instruction(self, text: str, rules: tuple[str, ...], locator: str, *, hidden: bool) -> None:
         where = "hidden text (removed)" if hidden else "visible text (kept; review the document)"

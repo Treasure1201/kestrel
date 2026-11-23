@@ -164,3 +164,19 @@ def test_main_with_injected_factory(fake_service: FakeService, tmp_path: Path, m
 def test_main_rejects_bad_model_and_runs(tmp_path: Path) -> None:
     assert run_eval.main(["--models", "nocolon", "--out", str(tmp_path)], service_factory=lambda s: None) == 2
     assert run_eval.main(["--runs", "0", "--out", str(tmp_path)], service_factory=lambda s: None) == 2
+
+
+def test_main_takes_a_bots_gold_file_as_the_questions(fake_service: FakeService, tmp_path: Path,
+                                                      monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
+    monkeypatch.setenv("KESTREL_MODEL", "fake:model")
+    staff_gold = Path(__file__).resolve().parents[2] / "bots" / "staff-policies" / "eval" / "gold.yaml"
+    code = run_eval.main(["--bot", "staff-policies", "--questions", str(staff_gold), "--out", str(tmp_path),
+                          "--no-ingest", "--no-retrieval"], service_factory=lambda s: fake_service)
+    assert code == 0
+    asked = [call[1] for call in fake_service.calls]
+    assert asked == [entry.question for entry in load_gold(staff_gold).questions.values()]
+    assert {call[0] for call in fake_service.calls} == {"staff-policies"}
+    (folder,) = list(tmp_path.iterdir())
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    assert summary["meta"]["question_set"] == "reworded" and summary["meta"]["gold_file"] == str(staff_gold)
+    assert not list(folder.glob("*.xlsx"))

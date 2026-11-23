@@ -1,0 +1,89 @@
+# Human review. For every question, set `assessment` to exactly one of:
+#   Correct | Partially correct | Incorrect | Correctly declined | Incorrectly declined
+# and add a short `comment` (why it failed / what was changed).
+# `auto_grade` is an automatic string-matching check against the gold file. It is a
+# screening signal, not an assessment: read the answer and its quotes and decide.
+# Then run:  uv run python -m eval.finalise results/20261123T020618Z_ollama-gpt-oss-20b
+run_folder: 20261123T020618Z_ollama-gpt-oss-20b
+model: ollama:gpt-oss:20b
+run: 1
+questions:
+- id: Q1
+  question: How many days of annual leave does an employee with 7 completed years of service get each
+    year?
+  outcome: answered
+  answer: An employee with 7 completed years of service is entitled to 21 working days of annual leave
+    each year.
+  sources:
+  - KA_Staff_Leave_Policy.md, section 2 "Annual leave", table 1
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q2
+  question: Who qualifies for the home-office allowance, and how much is it?
+  outcome: answered
+  answer: Employees who work remotely for at least two days per week on average and are not on probation
+    qualify for a home‑office allowance of R450 per month, paid monthly in arrears with salary.
+  sources:
+  - KA_Remote_Work_and_Equipment_Policy.md, section 5 "Home-office allowance"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q3
+  question: Who has to approve an expense claim that totals R6 500?
+  outcome: answered
+  answer: The Head of Department must approve a claim of R6 500.
+  sources:
+  - KA_Expenses_Policy.md, section 4 "Approval limits", table 1
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q4
+  question: Does Kestrel Assurance pay for employees' gym membership?
+  outcome: not_found
+  answer: 'The documents do not state that Kestrel Assurance pays for employees’ gym memberships.
+
+
+    Declined: The policy documents do not state that Kestrel Assurance pays for gym memberships.'
+  sources:
+  - KA_Expenses_Policy.md, section 1 "Scope"
+  - KA_Remote_Work_and_Equipment_Policy.md, section 1 "Purpose"
+  auto_grade: incorrect
+  auto_reasons: 'Auto-grade: incorrect (automatic check against the gold file, not a human assessment).
+    Declined, but stated an unsupported conclusion. Forbidden: a statement that gym membership is or is
+    not paid, presented as fact.'
+  assessment: ''
+  comment: ''
+- id: Q5
+  question: Using this year's calendar, how many working days are there from 11 March to 20 March, and
+    is that enough notice for five days of annual leave starting on 23 March?
+  outcome: answered
+  answer: There are 8 working days between 11 March and 20 March. That is less than the 10 working‑day
+    notice required for a five‑day annual‑leave request, so the notice would not be sufficient.
+  sources:
+  - 'tool result: workday-calendar / working_days_between {"end": "2026-03-20", "start": "2026-03-11"}'
+  - KA_Staff_Leave_Policy.md, section 2 "Annual leave", part 2
+  auto_grade: partially_correct
+  auto_reasons: 'Auto-grade: partially correct (automatic check against the gold file, not a human assessment).
+    Missing facts: the policy''s notice of at least 10 working days. Dropped conditions: at least (a minimum).
+    Expected section cited.'
+  assessment: ''
+  comment: ''
+- id: Q6
+  question: How long do I have to submit an expense claim?
+  outcome: answered
+  answer: You must submit an expense claim within 30 days of the date the expense was incurred. Claims
+    older than 90 days are not paid unless the Finance Manager approves an exception in writing.
+  sources:
+  - KA_Expenses_Policy.md, section 3 "Submitting a claim"
+  auto_grade: correct
+  auto_reasons: 'Auto-grade: correct (automatic check against the gold file, not a human assessment).
+    Expected section cited.'
+  assessment: ''
+  comment: ''

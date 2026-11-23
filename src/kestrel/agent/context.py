@@ -1,7 +1,7 @@
 """Per-request state: the evidence shown to the model, the searches and calculations it made, and its budget.
 
 One `RequestContext` is created for each question and bound to that question's tools,
-so labels (`c1`, `c7.r4`) are stable within the request and never leak between
+so labels (`c1`, `c7.r4`, `t1`) are stable within the request and never leak between
 requests. It is used from one event loop at a time; a lock still guards it because
 tools may run in worker threads.
 """
@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 
 from kestrel.agent.calculator import Calculation
-from kestrel.contracts import AnswerStep, Evidence, SearchHit, SearchScope, StepKind, TableRowView
+from kestrel.contracts import AnswerStep, Evidence, SearchHit, SearchScope, StepKind, TableRowView, ToolResult
 from kestrel.errors import BudgetExceededError
 
 
@@ -76,8 +76,11 @@ class RequestContext:
     """section id -> the label whose rows were registered for it."""
     steps: list[AnswerStep] = field(default_factory=list)
     """Every tool call, check and repair, in the order they happened."""
+    tool_results: dict[str, ToolResult] = field(default_factory=dict)
+    """label (`t1`, `t2`) -> one result of an approved MCP tool, citable like an excerpt."""
     _by_chunk: dict[str, str] = field(default_factory=dict)
     _next: int = 1
+    _next_tool: int = 1
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def seen_query(self, query: str) -> bool:
@@ -109,6 +112,17 @@ class RequestContext:
                 self.evidence[label] = Evidence(label=label, hit=self.evidence[base].hit, row=row, header=header)
         return label
 
+    def register_tool_result(self, server: str, tool: str, arguments: str, text: str) -> str:
+        """Label one MCP tool result `t<n>`. The same call with the same result keeps its first label."""
+        with self._lock:
+            for label, known in self.tool_results.items():
+                if (known.server, known.tool, known.arguments, known.text) == (server, tool, arguments, text):
+                    return label
+            label = f"t{self._next_tool}"
+            self._next_tool += 1
+            self.tool_results[label] = ToolResult(label=label, server=server, tool=tool, arguments=arguments, text=text)
+            return label
+
     def record_calculation(self, calculation: Calculation) -> None:
         with self._lock:
             self.calculations.append(calculation)
@@ -122,3 +136,8 @@ class RequestContext:
         """Every labelled excerpt and row, in the order they were shown."""
         with self._lock:
             return tuple(self.evidence.values())
+
+    def tools_shown(self) -> tuple[ToolResult, ...]:
+        """Every labelled tool result, in the order they were shown."""
+        with self._lock:
+            return tuple(self.tool_results.values())

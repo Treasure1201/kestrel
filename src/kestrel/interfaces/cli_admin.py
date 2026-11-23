@@ -140,7 +140,7 @@ def docs_show(
 @docs_app.command("block")
 @rt.handle_errors
 def docs_block(document_id: DocumentId, reason: Reason) -> None:
-    """Withdraw a document from search immediately."""
+    """Withdraw a document from search immediately. Needs the operator role."""
     settings = rt.get_settings()
     service = rt.get_service(settings)
     record = service.block_document(document_id, rt.principal(settings), _reason(reason))
@@ -151,7 +151,7 @@ def docs_block(document_id: DocumentId, reason: Reason) -> None:
 @docs_app.command("unblock")
 @rt.handle_errors
 def docs_unblock(document_id: DocumentId, reason: Reason) -> None:
-    """Restore a blocked document to the status its manifest gives it."""
+    """Restore a blocked document to the status its manifest gives it. Needs the operator role."""
     settings = rt.get_settings()
     service = rt.get_service(settings)
     record = service.unblock_document(document_id, rt.principal(settings), _reason(reason))
@@ -210,7 +210,7 @@ def audit_tail(
 @audit_app.command("verify")
 @rt.handle_errors
 def audit_verify() -> None:
-    """Check the whole hash chain; exit 1 if any record was edited or removed."""
+    """Check the whole hash chain; exit 1 if any record was edited or removed. Needs the operator role."""
     settings = rt.get_settings()
     service = rt.get_service(settings)
     result = service.audit_verify(rt.principal(settings))
@@ -226,7 +226,7 @@ def audit_verify() -> None:
 @audit_app.command("prune")
 @rt.handle_errors
 def audit_prune(bot: BotOption = None, all_bots: AllBots = False) -> None:
-    """Remove records past each bot's retention period, keeping the chain verifiable."""
+    """Remove records past each bot's retention period, keeping the chain verifiable. Needs the operator role."""
     settings = rt.get_settings()
     service = rt.get_service(settings)
     bot_id = None if all_bots else _bot(settings, bot)

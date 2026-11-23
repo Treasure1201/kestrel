@@ -4,6 +4,10 @@
         [--runs N] [--questions eval/KA_Test_Questions.xlsx] [--set test|reworded]
         [--out results/] [--ingest/--no-ingest] [--gold PATH] [--retrieval/--no-retrieval]
 
+    uv run python -m eval.run_eval --bot staff-policies --questions bots/staff-policies/eval/gold.yaml
+
+`--questions` may be a gold file (`.yaml`): its own questions are asked and graded against it.
+
 For each model a folder `results/<UTC timestamp>_<model-slug>/` receives
 `results.jsonl` (one `EvalRecord` per question per run, appended as it is produced),
 `results.csv`, `summary.json`, `review.yaml` (for the human review) and, for the test
@@ -231,7 +235,8 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--bot", default="kestrel-products")
     parser.add_argument("--models", nargs="+", metavar="PROVIDER:MODEL", help="default: the configured model")
     parser.add_argument("--runs", type=int, default=1)
-    parser.add_argument("--questions", type=Path, default=DEFAULT_TEMPLATE)
+    parser.add_argument("--questions", type=Path, default=DEFAULT_TEMPLATE,
+                        help="the workbook, or a gold file (.yaml) whose questions are asked, such as a bot's eval/gold.yaml")
     parser.add_argument("--set", dest="set_name", choices=("test", "reworded"), default="test")
     parser.add_argument("--gold", type=Path, default=None, help="default: the set's gold file")
     parser.add_argument("--out", type=Path, default=Path("results"))
@@ -244,6 +249,9 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None, service_factory: Callable[[Any], Any] | None = None) -> int:
     """Command-line entry point. `service_factory(settings)` is injectable for tests."""
     args = _parse(argv)
+    if args.questions.suffix.lower() in {".yaml", ".yml"}:
+        # A gold file holds its own questions: ask those, graded against the same file.
+        args.set_name, args.gold = "reworded", args.gold or args.questions
     if args.runs < 1:
         print("error: --runs must be at least 1", file=sys.stderr)
         return 2

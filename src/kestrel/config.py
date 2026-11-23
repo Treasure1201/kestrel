@@ -43,8 +43,8 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-small-en-v1.5"
 
     user: str = "local-user"
-    roles: Annotated[tuple[str, ...], NoDecode] = ("call-centre-agent", "broker", "staff")
-    """Comma-separated in the environment: `KESTREL_ROLES=call-centre-agent,broker`."""
+    roles: Annotated[tuple[str, ...], NoDecode] = ("call-centre-agent", "broker", "staff", "operator")
+    """Comma-separated in the environment: `KESTREL_ROLES=call-centre-agent,broker,operator`. `operator` allows ingest, block and audit administration."""
 
     timeout_s: float = Field(default=120.0, gt=0)
     """Wall-clock limit per question."""

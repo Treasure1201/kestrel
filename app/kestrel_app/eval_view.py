@@ -62,7 +62,8 @@ def _detail(record: EvalRecord, review: results.HumanReview | None) -> None:
         if not result.citations:
             st.caption("No citations.")
         for citation in result.citations:
-            st.caption(f"{citation.label} · {citation.filename}, {citation.locator}")
+            where = f"tool result: {citation.title} {citation.locator}" if citation.is_tool else f"{citation.filename}, {citation.locator}"
+            st.caption(f"{citation.label} · {where}")
             quote(citation.quote)
         left, right = st.columns(2)
         with left:

@@ -2,7 +2,10 @@
 
 Pure functions: they read the screened question, the model's `AgentAnswer`, the
 evidence handed to the model in this request, the scope decision and the calculations
-the `calculate` tool performed, and return `CheckIssue`s. Nothing here calls a model
+the `calculate` tool performed, and return `CheckIssue`s. A cited MCP tool result
+(`t1`) is evidence like an excerpt: its quote must be verbatim in the result and its
+numbers ground the answer and calculation operands; it is not a document, and
+`check_document_cited` decides when it may stand alone. Nothing here calls a model
 or a database. Every issue's `detail` names the label, quote or number at fault and
 what to do about it, because it is sent back to the model in the repair turn.
 """
@@ -14,8 +17,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from kestrel.agent.calculator import Calculation, CalculationError, evaluate, format_decimal
-from kestrel.contracts import AgentAnswer, CheckIssue, DocumentStatus, Evidence, EvidenceReport, ScopeDecision
-from kestrel.verify.numbers import contains_number, numbers_in, parse_number, percent_rates
+from kestrel.contracts import AgentAnswer, CheckIssue, DocumentStatus, Evidence, EvidenceReport, ScopeDecision, ToolResult
+from kestrel.verify.numbers import comparable, contains_number, numbers_in, parse_number, percent_rates
 from kestrel.verify.quotes import quote_found
 
 UNIT_CONSTANTS = frozenset({Decimal(1), Decimal(12), Decimal(100)})
@@ -57,12 +60,27 @@ class _Context:
     evidence: Mapping[str, Evidence]
     scope: ScopeDecision | None
     tool_calculations: Sequence[Calculation]
+    tools: Mapping[str, ToolResult] = field(default_factory=dict)
+    has_documents: bool = True
     cited: list[tuple[str, Evidence]] = field(default_factory=list)
+    cited_tools: list[tuple[str, ToolResult]] = field(default_factory=list)
     verified: set[Decimal] = field(default_factory=set)
 
     @property
     def declined(self) -> bool:
         return self.answer.status in _DECLINES
+
+    def tool_support(self, *, cited_only: bool) -> set[Decimal]:
+        """Numbers the tool results support: the cited ones, or all of them for a decline."""
+        results = self.tools.values() if not cited_only else (result for _, result in self.cited_tools)
+        support: set[Decimal] = set()
+        for result in results:
+            support |= _tool_numbers(result)
+        return support
+
+
+def _tool_numbers(result: ToolResult) -> set[Decimal]:
+    return numbers_in(result.text) | percent_rates(result.text)
 
 
 def check_status_contract(ctx: _Context) -> list[CheckIssue]:
@@ -83,19 +101,21 @@ def check_status_contract(ctx: _Context) -> list[CheckIssue]:
 def check_labels(ctx: _Context) -> list[CheckIssue]:
     """Check 1: every cited label was retrieved in this request."""
     issues = []
-    known = ", ".join(list(ctx.evidence)[:30]) or "none"
+    known = ", ".join([*list(ctx.evidence)[:30], *list(ctx.tools)[:10]]) or "none"
     for citation in ctx.answer.citations:
         label = clean_label(citation.label)
         evidence = ctx.evidence.get(label)
-        if evidence is None:
+        if evidence is not None:
+            ctx.cited.append((label, evidence))
+        elif label in ctx.tools:
+            ctx.cited_tools.append((label, ctx.tools[label]))
+        else:
             issues.append(CheckIssue(
                 check="label_retrieved",
                 label=label,
-                detail=f"Citation {label!r} was not shown to you in this request. Use only labels from search_documents "
-                f"or get_table results (available: {known}).",
+                detail=f"Citation {label!r} was not shown to you in this request. Use only labels from search_documents, "
+                f"get_table or tool results (available: {known}).",
             ))
-        else:
-            ctx.cited.append((label, evidence))
     return issues
 
 
@@ -105,6 +125,16 @@ def check_quotes(ctx: _Context) -> list[CheckIssue]:
     for citation in ctx.answer.citations:
         label = clean_label(citation.label)
         evidence = ctx.evidence.get(label)
+        tool = ctx.tools.get(label)
+        if tool is not None and evidence is None:
+            if not quote_found(citation.quote, tool.text) and comparable(citation.quote).strip(" \"'.") != comparable(tool.text).strip():
+                issues.append(CheckIssue(
+                    check="quote_verbatim",
+                    label=label,
+                    detail=f"The quote for {label} is not word for word in that tool result: \"{_preview(citation.quote)}\". "
+                    f"Copy the exact text of the result: \"{_preview(tool.text)}\".",
+                ))
+            continue
         if evidence is None:
             continue
         if quote_found(citation.quote, evidence.text, row=evidence.row is not None):
@@ -144,7 +174,7 @@ def _calculation_support(ctx: _Context) -> set[Decimal]:
     sources: Iterable[Evidence] = ctx.evidence.values() if ctx.declined else (ev for _, ev in ctx.cited)
     for evidence in sources:
         support |= _operand_support(evidence)
-    return support
+    return support | ctx.tool_support(cited_only=not ctx.declined)
 
 
 def _traced(calculation: Calculation, support: set[Decimal]) -> list[Decimal]:
@@ -186,13 +216,13 @@ def check_calculations(ctx: _Context) -> list[CheckIssue]:
             shown = ", ".join(_show(value) for value in missing)
             issues.append(CheckIssue(
                 check="calculation_recomputed",
-                detail=f"In {expression}, the number(s) {shown} do not appear in a cited excerpt, the question or an "
-                "earlier calculation. Cite the excerpt each operand comes from.",
+                detail=f"In {expression}, the number(s) {shown} do not appear in a cited excerpt or tool result, the "
+                "question or an earlier calculation. Cite the excerpt or tool result each operand comes from.",
             ))
         rule = clean_label(reported.rule or "")
         if not rule:
             issues.append(CheckIssue(check="calculation_recomputed", detail=f"The calculation {expression} does not name the excerpt that states its rule; set rule to that label."))
-        elif rule not in ctx.evidence:
+        elif rule not in ctx.evidence and rule not in ctx.tools:
             issues.append(CheckIssue(
                 check="calculation_recomputed", label=rule,
                 detail=f"The rule label {rule!r} for {expression} was not retrieved in this request; use the label of the excerpt stating the formula.",
@@ -214,7 +244,13 @@ def check_numbers(ctx: _Context) -> list[CheckIssue]:
             support |= _operand_support(evidence)
         else:
             uncited[label] = _operand_support(evidence)
-    texts = [("answer", ctx.answer.answer)] + [("caveats", caveat) for caveat in ctx.answer.caveats]
+    cited_tools = {label for label, _ in ctx.cited_tools}
+    for label, result in ctx.tools.items():
+        if label in cited_tools or ctx.declined:
+            support |= _tool_numbers(result)
+        else:
+            uncited[label] = _tool_numbers(result)
+    texts =[("answer", ctx.answer.answer)] + [("caveats", caveat) for caveat in ctx.answer.caveats]
     reported: set[Decimal] = set()
     for where, text in texts:
         for number in sorted(numbers_in(text)):
@@ -226,10 +262,40 @@ def check_numbers(ctx: _Context) -> list[CheckIssue]:
                 detail = (f"The number {_show(number)} in the {where} comes from {sources[0]}, which is not cited. "
                           f"Add a citation to {sources[0]} quoting the words that contain it.")
             else:
-                detail = (f"The number {_show(number)} in the {where} does not appear in any cited excerpt, the question "
-                          "or a calculation. Remove it, cite where it comes from, or compute it with the calculate tool.")
+                detail = (f"The number {_show(number)} in the {where} does not appear in any cited excerpt or tool result, "
+                          "the question or a calculation. Remove it, cite where it comes from, or compute it with the "
+                          "calculate tool.")
             issues.append(CheckIssue(check="numbers_grounded", detail=detail))
     return issues
+
+
+def check_document_cited(ctx: _Context) -> list[CheckIssue]:
+    """An answer that cites only tool results, for a bot with document collections.
+
+    The rule: a tool result can stand alone only as a report of the facts the tool
+    returned. Such an answer is accepted when at least one number in it comes from a
+    cited tool result and every number in it traces to the cited tool results, the
+    question or a verified calculation. Anything else (a rule, a condition, a statement
+    in words) is what the bot's documents are for, so it needs at least one document
+    citation. A bot without document collections may cite tool results alone.
+    """
+    if not ctx.has_documents or ctx.declined or ctx.cited or not ctx.cited_tools:
+        return []
+    from_tools = ctx.tool_support(cited_only=True)
+    others = numbers_in(ctx.question) | percent_rates(ctx.question) | ctx.verified
+    numbers = set().union(*(numbers_in(text) for text in [ctx.answer.answer, *ctx.answer.caveats]))
+    reports_tool_facts = any(contains_number(from_tools, n) for n in numbers) and all(
+        contains_number(from_tools | others, n) for n in numbers
+    )
+    if reports_tool_facts:
+        return []
+    labels = ", ".join(label for label, _ in ctx.cited_tools)
+    return [CheckIssue(
+        check="schema",
+        detail=f"The answer cites only tool results ({labels}). A tool result supports the facts the tool returned; "
+        "the rules and statements in the answer need a citation of a document excerpt from search_documents. Cite "
+        "the excerpt that states them, or use not_found if the documents do not say.",
+    )]
 
 
 def check_decline(ctx: _Context) -> list[CheckIssue]:
@@ -272,15 +338,24 @@ def run_checks(
     evidence: Mapping[str, Evidence],
     scope: ScopeDecision | None,
     tool_calculations: Sequence[Calculation] = (),
+    tool_results: Mapping[str, ToolResult] | None = None,
+    *,
+    has_documents: bool = True,
 ) -> list[CheckIssue]:
-    """Run the status contract and all seven checks; return every issue found (empty when all pass)."""
-    ctx = _Context(question=question, answer=answer, evidence=evidence, scope=scope, tool_calculations=tool_calculations)
+    """Run the status contract and all seven checks; return every issue found (empty when all pass).
+
+    `tool_results` are the labelled MCP tool results (`t1`, ...) shown in this request;
+    `has_documents` is False for a bot without document collections.
+    """
+    ctx = _Context(question=question, answer=answer, evidence=evidence, scope=scope, tool_calculations=tool_calculations,
+                   tools=dict(tool_results or {}), has_documents=has_documents)
     issues = check_status_contract(ctx)
     issues += check_labels(ctx)
     issues += check_quotes(ctx)
     issues += check_table_rows(ctx)
     issues += check_calculations(ctx)
     issues += check_numbers(ctx)
+    issues += check_document_cited(ctx)
     issues += check_decline(ctx)
     issues += check_source_status(ctx)
     return issues

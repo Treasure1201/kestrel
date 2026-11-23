@@ -4,6 +4,7 @@ The rules look only at rendering attributes, never at what the text says or whic
 document it came from:
 
 - explicitly hidden (a format's hidden or vanish flag, an invisible render mode);
+- covered by an opaque shape painted over it (the parser records this from paint order);
 - positioned off the page;
 - a font too small to read;
 - too little contrast between the text colour and its *resolved* background.
@@ -37,7 +38,7 @@ light captions) in place.
 _HEX = re.compile(r"^[0-9A-F]{6}$")
 
 # Severity order used to pick the one kind a finding is reported under.
-_KIND_ORDER: tuple[FindingKind, ...] = ("hidden_text", "off_page", "tiny_text", "low_contrast")
+_KIND_ORDER: tuple[FindingKind, ...] = ("hidden_text", "covered_text", "off_page", "tiny_text", "low_contrast")
 
 
 def normalise_color(value: str | None) -> str | None:
@@ -90,6 +91,8 @@ def invisibility(span: TextSpan, page_background: str = WHITE) -> list[Invisibil
     reasons: list[Invisibility] = []
     if span.hidden:
         reasons.append(Invisibility("hidden_text", "marked hidden by the format"))
+    if span.covered:
+        reasons.append(Invisibility("covered_text", "covered by an opaque shape drawn over it"))
     if _off_page(span):
         reasons.append(Invisibility("off_page", "positioned outside the page"))
     if span.font_size_pt is not None and 0 <= span.font_size_pt < MIN_READABLE_PT:

@@ -27,7 +27,7 @@ ID_NUMBER = "8001015009087"
 
 EMPLOYEE = Principal(user="employee", roles=frozenset({"staff"}), channel="cli")
 AGENT = Principal(user="agent", roles=frozenset({"call-centre-agent"}), channel="cli")
-BOTH = Principal(user="operator", roles=frozenset({"staff", "call-centre-agent"}), channel="cli")
+BOTH = Principal(user="operator", roles=frozenset({"staff", "call-centre-agent", "operator"}), channel="cli")
 
 
 def _settings(root: Path, **overrides: object) -> Settings:
@@ -209,3 +209,21 @@ def test_only_the_staff_bot_is_offered_the_calendar_tools(workspace: Path) -> No
     for tools in offered.values():
         assert {"search_documents", "get_table", "calculate"} <= tools
         assert not {"write_file", "edit_file", "execute", "task", "ls", "glob", "grep"} & tools
+
+
+def test_staff_may_use_the_staff_bot_but_are_not_operators(service: LocalAssistantService) -> None:
+    """`staff` is the staff bot's audience, not the operator role: no ingest, block, unblock, prune or verify."""
+    assert [bot.id for bot in service.list_bots(EMPLOYEE)] == [STAFF]
+    assert service.search(STAFF, "annual leave", EMPLOYEE).hits
+    document = service.list_documents(STAFF, EMPLOYEE)[0]
+    operations = {
+        "ingest": lambda: service.ingest(EMPLOYEE, STAFF),
+        "block": lambda: service.block_document(document.id, EMPLOYEE, "test"),
+        "unblock": lambda: service.unblock_document(document.id, EMPLOYEE, "test"),
+        "prune": lambda: service.audit_prune(EMPLOYEE, STAFF),
+        "verify": lambda: service.audit_verify(EMPLOYEE),
+    }
+    for operation in operations.values():
+        with pytest.raises(AccessDeniedError, match="operator"):
+            operation()
+    assert service.list_documents(STAFF, BOTH)[0].status == document.status  # nothing changed

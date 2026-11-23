@@ -139,10 +139,14 @@ def footer(result: AskResult) -> str:
 
 
 def _citation_lines(index: int, citation: ResolvedCitation) -> list[str]:
-    where = source_line(citation.filename, citation.locator)
-    if citation.row_number is not None:
-        where += f" > row {citation.row_number}"
-    lines = [f"[{index}] {where}{_edition_note(citation.status, citation.edition)}"]
+    if citation.is_tool:
+        args = f" with arguments {citation.tool_arguments}" if citation.tool_arguments else ""
+        lines = [f"[{index}] Tool result (not a document): {citation.tool_name} on server {citation.tool_server}{args}"]
+    else:
+        where = source_line(citation.filename, citation.locator)
+        if citation.row_number is not None:
+            where += f" > row {citation.row_number}"
+        lines = [f"[{index}] {where}{_edition_note(citation.status, citation.edition)}"]
     lines.append(f'    "{" ".join(citation.quote.split())}"')
     if citation.supports:
         lines.append(f"    supports: {citation.supports}")
@@ -215,6 +219,9 @@ def _render_trace(result: AskResult) -> None:
         out(f"  How this was answered ({len(result.steps)} steps):")
         for line in step_lines(result):
             out(f"  {line}")
+    for tool in result.tool_results:
+        out(f"  [{tool.label}] tool result: {tool.source_line}")
+        out(f"      {snippet(tool.text)}")
     if not result.retrieved:
         out("  Retrieved evidence: none")
         return

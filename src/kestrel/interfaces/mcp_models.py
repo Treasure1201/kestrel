@@ -105,8 +105,14 @@ class BotListOutput(_Out):
 
 
 class CitationInfo(_Out):
-    """One quoted source the answer relies on. Pass it on to the user unchanged."""
+    """One quoted source the answer relies on. Pass it on to the user unchanged.
 
+    `source` is `document` for a passage of an approved document, or `tool` for the
+    result of an approved tool (then `filename` is empty and `tool_name`, `tool_server`
+    and `tool_arguments` say which call produced it): never present a tool result as a document.
+    """
+
+    source: str = "document"
     filename: str
     locator: str
     quote: str
@@ -115,6 +121,9 @@ class CitationInfo(_Out):
     title: str = ""
     supports: str = ""
     section_id: str = ""
+    tool_name: str | None = None
+    tool_server: str | None = None
+    tool_arguments: str | None = None
 
 
 class CalculationInfo(_Out):
@@ -215,6 +224,10 @@ def ask_output(result: AskResult) -> AskOutput:
                 title=c.title,
                 supports=c.supports,
                 section_id=c.section_id,
+                source=c.source,
+                tool_name=c.tool_name,
+                tool_server=c.tool_server,
+                tool_arguments=c.tool_arguments,
             )
             for c in result.citations
         ],

@@ -88,6 +88,13 @@ def _citation(result: AskResult, citation: ResolvedCitation, index: int) -> None
             check = citation_check(result, citation)
             if check is not None:
                 st.badge(check[0], color=check[1])  # type: ignore[arg-type]
+        if citation.is_tool:
+            st.markdown(f"**Tool result: {md(citation.tool_name or '')}** (not a document)")
+            args = f" · arguments {citation.tool_arguments}" if citation.tool_arguments else ""
+            st.caption(md(f"server {citation.tool_server}{args}"))
+            quote(citation.quote)
+            st.caption(f"Supports: {citation.supports}")
+            return
         st.markdown(f"**{md(citation.filename)}**")
         details = [citation.locator]
         if citation.row_number is not None:

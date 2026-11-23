@@ -14,7 +14,7 @@ from kestrel.agent.builder import build_agent
 from kestrel.agent.context import Budget, RequestContext
 from kestrel.agent.mcp_tools import load_mcp_tools
 from kestrel.agent.middleware import is_transient
-from kestrel.agent.tools import UNTRUSTED_NOTICE, build_builtin_tools
+from kestrel.agent.tools import TOOL_NOTICE, build_builtin_tools
 from kestrel.contracts import AgentAnswer, BotConfig, KnowledgeConfig, McpServerSpec, ModelPolicy, PrivacyPolicy, SearchScope
 from kestrel.privacy import RuleBasedScreen
 
@@ -152,7 +152,7 @@ def test_mcp_tools_are_allow_listed_screened_and_wrapped() -> None:
 
     names, reply, redacted, warnings = asyncio.run(asyncio.wait_for(main(), timeout=90))
     assert names == ["define"]  # `add` is on the server but not allowed
-    assert reply.startswith(UNTRUSTED_NOTICE)
+    assert reply.startswith(TOOL_NOTICE)
     assert "Time after a claim event before benefits start." in reply
     assert "unknown term" in redacted
     assert warnings == []
@@ -187,3 +187,49 @@ def test_budget_has_a_model_call_limit_and_a_deadline() -> None:
     expired = Budget(max_model_calls=5, max_searches=1, max_repairs=0, timeout_s=1, started=time.monotonic() - 5)
     with pytest.raises(BudgetExceededError):
         expired.take_model_call()
+
+
+class _ResponseError(Exception):
+    """Stands in for the error a local provider raises when it cannot parse the model's tool call."""
+
+
+class _Garbled(ScriptedChatModel):
+    """Raises a tool-call parsing error on the first `garbled` calls, then replays the script."""
+
+    garbled: int = 1
+    failures: int = 0
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):  # type: ignore[no-untyped-def]
+        if self.failures < self.garbled:
+            self.failures += 1
+            raise _ResponseError("error parsing tool call: raw='We need to produce correct AgentAnswer JSON. Must'")
+        return super()._generate(messages, stop, run_manager, **kwargs)
+
+
+def test_a_malformed_tool_call_is_asked_again_within_the_budget(tmp_path: Path) -> None:
+    from kestrel.agent.middleware import MALFORMED_NOTE, is_malformed_tool_call
+
+    assert is_malformed_tool_call(_ResponseError("error parsing tool call: raw='x'"))
+    assert not is_malformed_tool_call(_ResponseError("connection refused"))
+    ctx = _ctx()
+    model = _Garbled(script=[final_answer(ANSWER)])
+    agent = build_agent(_bot(tmp_path), model, build_builtin_tools(_bot(tmp_path).tools, ctx, _NoRetriever()), ctx.budget)
+    result = asyncio.run(agent.ainvoke({"messages": [{"role": "user", "content": "question"}]}))
+    assert result["structured_response"] == ANSWER
+    assert ctx.budget.model_calls == 2  # the failed call and the retry both count
+    assert MALFORMED_NOTE in str(model.calls[-1][-1].content)
+
+
+def test_a_malformed_tool_call_is_raised_when_retries_or_budget_run_out(tmp_path: Path) -> None:
+    ctx = _ctx()
+    model = _Garbled(script=[final_answer(ANSWER)], garbled=5)
+    agent = build_agent(_bot(tmp_path), model, build_builtin_tools(_bot(tmp_path).tools, ctx, _NoRetriever()), ctx.budget)
+    with pytest.raises(_ResponseError):
+        asyncio.run(agent.ainvoke({"messages": [{"role": "user", "content": "question"}]}))
+    assert ctx.budget.model_calls == 3  # one call and two retries
+    tight = RequestContext(scope=SearchScope(collections=("demo",)), budget=Budget(max_model_calls=1, max_searches=1, max_repairs=0, timeout_s=60))
+    model = _Garbled(script=[final_answer(ANSWER)])
+    agent = build_agent(_bot(tmp_path), model, build_builtin_tools(_bot(tmp_path).tools, tight, _NoRetriever()), tight.budget)
+    with pytest.raises(_ResponseError):
+        asyncio.run(agent.ainvoke({"messages": [{"role": "user", "content": "question"}]}))
+    assert tight.budget.model_calls == 1

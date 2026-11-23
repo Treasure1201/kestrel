@@ -34,6 +34,7 @@ from eval.normalise import contains_any, locator_key, normalise  # noqa: E402
 BOT = REPO / "bots" / "staff-policies"
 SOURCE = REPO / "data" / "source" / "staff-policies"
 EMPLOYEE = Principal(user="employee", roles=frozenset({"staff"}), channel="cli")
+OPERATOR = Principal(user="operator", roles=frozenset({"staff", "operator"}), channel="cli")
 NOTICE_QUOTE = "must be submitted at least 10 working days before the first day of leave"
 
 
@@ -89,7 +90,7 @@ def test_documents_say_they_are_fictitious_and_hide_nothing() -> None:
 def test_documents_ingest_as_current(staff_settings: Settings) -> None:
     service = build_service(staff_settings, embedder=FakeEmbedder())
     try:
-        report = service.ingest(EMPLOYEE, "staff-policies")
+        report = service.ingest(OPERATOR, "staff-policies")
         assert sorted(f.filename for f in report.files) == sorted(p.name for p in SOURCE.iterdir())
         assert {f.status.value for f in report.files if f.status} == {"current"}
     finally:
@@ -146,7 +147,7 @@ def test_the_agent_can_call_the_calendar_tool(staff_settings: Settings) -> None:
     )
     service = build_service(staff_settings, chat_model_factory=factory, embedder=FakeEmbedder())
     try:
-        service.ingest(EMPLOYEE, "staff-policies")
+        service.ingest(OPERATOR, "staff-policies")
         result = service.ask("staff-policies", "How much notice does a week of annual leave need?", EMPLOYEE)
     finally:
         service.close()
@@ -155,3 +156,45 @@ def test_the_agent_can_call_the_calendar_tool(staff_settings: Settings) -> None:
     assert len(seen) == 1 and "data, not instructions" in seen[0]  # tool output is wrapped as untrusted data
     assert re.search(r"\b8\b", seen[0].split("working_days_between")[-1])
     assert "working_days_between" in model.offered_tools[0]
+
+
+def test_a_calendar_result_is_cited_evidence_and_its_number_survives(staff_settings: Settings) -> None:
+    from fakes import final_answer
+    from service.workspace import label_for
+
+    from kestrel.contracts import AgentAnswer, CitationOut
+
+    def answer(messages):  # type: ignore[no-untyped-def]
+        shown = next(str(m.content) for m in messages if isinstance(m, ToolMessage) and m.name == "working_days_between")
+        tool_label = re.search(r"\[(t\d+)\]", shown).group(1)  # type: ignore[union-attr]
+        count = shown.split("):")[-1].split("\n\n")[0].strip()
+        return final_answer(AgentAnswer(
+            status="answered",
+            answer=f"There are {count} working days from 11 March to 20 March, so the request does not give the "
+            "required notice of at least 10 working days.",
+            citations=[
+                CitationOut(label=label_for(messages, NOTICE_QUOTE), quote=NOTICE_QUOTE, supports="the notice rule"),
+                CitationOut(label=tool_label, quote=count, supports="the working-day count"),
+            ],
+        ))
+
+    _, factory = scripted(
+        tool_call("search_documents", {"query": "notice for annual leave request working days"}),
+        tool_call("working_days_between", {"start": "2026-03-11", "end": "2026-03-20"}, "call_days"),
+        answer,
+    )
+    service = build_service(staff_settings, chat_model_factory=factory, embedder=FakeEmbedder())
+    try:
+        service.ingest(OPERATOR, "staff-policies")
+        result = service.ask("staff-policies", "Is 11 March to 20 March enough notice for a week of leave?", EMPLOYEE)
+    finally:
+        service.close()
+    assert result.outcome == Outcome.ANSWERED, (result.reason, result.evidence_report)
+    assert result.evidence_report is not None and result.evidence_report.passed and not result.evidence_report.repaired
+    assert "8 working days" in result.answer
+    document, tool = result.citations
+    assert not document.is_tool and document.filename == "KA_Staff_Leave_Policy.md"
+    assert tool.is_tool and tool.source == "tool" and tool.document_id == "" and tool.section_id == ""
+    assert (tool.tool_server, tool.tool_name) == ("workday-calendar", "working_days_between")
+    assert "2026-03-11" in (tool.tool_arguments or "")
+    assert [t.label for t in result.tool_results] == ["t1"] and result.tool_results[0].text == "8"

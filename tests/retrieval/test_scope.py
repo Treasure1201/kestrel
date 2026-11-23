@@ -134,3 +134,30 @@ def test_word_edition_labels_are_found_by_name() -> None:
     assert resolve_scope("is a second claim allowed", KNOWLEDGE, docs).scope == DEFAULT
     decision = resolve_scope("what does version 2 say", KNOWLEDGE, [doc("2", DocumentStatus.CURRENT, None)])
     assert decision.scope is not None and decision.scope.edition == "2"
+
+
+SINGLE = [
+    doc("2026", DocumentStatus.CURRENT, date(2026, 1, 1)),
+    doc("2024", DocumentStatus.CURRENT, date(2024, 1, 1), family="other"),
+    doc("2025", DocumentStatus.BLOCKED, date(2025, 1, 1)),
+]
+
+
+@pytest.mark.parametrize("question", [
+    "How many working days are there between 2026-03-11 and 2026-03-20?",
+    "Can leave taken in December 2025 be carried over?",
+    "What was decided on 3 March 2026?",
+])
+def test_years_and_dates_are_content_when_no_family_has_two_editions(question: str) -> None:
+    # Each family has one approved edition (a blocked edition does not count), so there is nothing to choose.
+    decision = resolve_scope(question, KNOWLEDGE, SINGLE)
+    assert decision.clarification is None and decision.scope == DEFAULT and not decision.explicit
+    assert resolve_scope(question, KNOWLEDGE, [doc(None, DocumentStatus.CURRENT, None, family=None)]).scope == DEFAULT
+
+
+@pytest.mark.parametrize("question", [
+    "How many working days are there between 2026-03-11 and 2026-03-20?",
+    "Can leave taken in December 2025 be carried over?",
+])
+def test_years_and_dates_still_ask_when_a_family_has_two_editions(question: str) -> None:
+    assert resolve_scope(question, KNOWLEDGE, DOCS).clarification is not None
