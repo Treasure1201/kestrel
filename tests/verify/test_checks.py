@@ -7,6 +7,7 @@ from verify.builders import EXPLICIT, SCOPE, answer, prose, table_evidence
 from kestrel.agent.calculator import evaluate
 from kestrel.contracts import DocumentStatus
 from kestrel.verify import evidence_report, repair_message, run_checks
+from kestrel.verify.checks import self_reference
 
 WAITING = prose("c1", "Option B: the waiting period is three months. Benefits are paid monthly in arrears.")
 CLAIMS = prose(
@@ -267,3 +268,24 @@ def test_repair_message_lists_each_issue() -> None:
     issues = checks(answer("Six months.", [("c9", "x")]))
     message = repair_message(issues)
     assert "label_retrieved" in message and "c9" in message
+    assert "ALL the citations" in message and "rather than explain it" in message
+    assert "Never mention drafts, checks" in message
+
+
+# Self-reference --------------------------------------------------------------------------
+
+
+def test_self_reference_in_the_answer_or_caveats_fails() -> None:
+    ans = answer("The waiting period is three months. The earlier draft was wrong.", [("c1", "the waiting period is three months")])
+    issues = checks(ans)
+    assert names(issues) == ["schema"] and "earlier draft" in issues[0].detail
+    caveat = answer("The waiting period is three months.", [("c1", "the waiting period is three months")],
+                    caveats=["The first draft contradicted itself."])
+    assert names(checks(caveat)) == ["schema"]
+
+
+def test_self_reference_words() -> None:
+    for text in ("The first draft contradicted itself", "my previous answer", "the evidence check failed", "after repair"):
+        assert self_reference(text), text
+    for text in ("Repairs to the building are covered.", "A draft of the policy", "The answer is three months."):
+        assert self_reference(text) is None, text

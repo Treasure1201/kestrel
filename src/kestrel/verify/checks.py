@@ -12,6 +12,7 @@ what to do about it, because it is sent back to the model in the repair turn.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -326,6 +327,37 @@ def check_source_status(ctx: _Context) -> list[CheckIssue]:
     return issues
 
 
+SELF_REFERENCE = re.compile(
+    r"\b(?:first|earlier|previous|prior|initial|original)\s+(?:draft|answer|response|version)\b"
+    r"|\bdrafts?\s+answer\b|\bevidence\s+checks?\b|\brepair(?:ed)?\s+(?:turn|step|answer)\b|\bafter\s+(?:the\s+)?repair\b"
+    r"|\bcontradicted\s+itself\b",
+    re.IGNORECASE,
+)
+"""Words with which an answer talks about its own drafting, checking or correction rather than the question."""
+
+
+def self_reference(text: str) -> str | None:
+    """The phrase with which `text` refers to drafts, checks or repairs, or None."""
+    match = SELF_REFERENCE.search(text or "")
+    return match.group(0) if match else None
+
+
+def check_self_reference(ctx: _Context) -> list[CheckIssue]:
+    """The answer, caveats and reason speak about the question, never about drafts, checks or corrections."""
+    texts = [("answer", ctx.answer.answer), ("reason", ctx.answer.reason or "")]
+    texts += [("caveats", caveat) for caveat in ctx.answer.caveats]
+    issues = []
+    for where, text in texts:
+        phrase = self_reference(text)
+        if phrase:
+            issues.append(CheckIssue(
+                check="schema",
+                detail=f"The {where} mentions \"{phrase}\". Never mention drafts, checks or corrections: state only "
+                "what the excerpts support about the question, and remove the sentence that refers to them.",
+            ))
+    return issues
+
+
 WITHDRAWN_REASON = "A source was withdrawn while the answer was being prepared, so the answer is not shown."
 
 
@@ -377,7 +409,7 @@ def run_checks(
     *,
     has_documents: bool = True,
 ) -> list[CheckIssue]:
-    """Run the status contract and all seven checks; return every issue found (empty when all pass).
+    """Run the status contract, all seven checks and the self-reference rule; return every issue (empty when all pass).
 
     `tool_results` are the labelled MCP tool results (`t1`, ...) shown in this request;
     `has_documents` is False for a bot without document collections.
@@ -393,6 +425,7 @@ def run_checks(
     issues += check_document_cited(ctx)
     issues += check_decline(ctx)
     issues += check_source_status(ctx)
+    issues += check_self_reference(ctx)
     return issues
 
 
@@ -407,7 +440,10 @@ def repair_message(issues: Sequence[CheckIssue]) -> str:
     return (
         "The application checked your answer against the excerpts and found these problems:\n"
         + "\n".join(lines)
-        + "\nFix them and give your final answer again with the answer tool. Use only labels and words from the "
-        "excerpts you were shown; removing an unsupported detail is often the right fix. If the excerpts do not "
-        "support an answer, use status not_found with a reason. Do not mention these checks or the earlier draft."
+        + "\nFix them and call the answer tool again with the COMPLETE corrected answer: status, answer, ALL the "
+        "citations it relies on (each with its label and exact quote, including the ones that were already right), "
+        "calculations, caveats and reason. Use only labels and words from the excerpts you were shown. Remove any "
+        "statement or caveat you cannot support rather than explain it. If the excerpts do not support an answer, use "
+        "status not_found with a reason. Never mention drafts, checks, problems or corrections in the answer, the "
+        "caveats or the reason: write it as if it were your first answer."
     )
