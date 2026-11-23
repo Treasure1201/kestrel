@@ -1,13 +1,11 @@
 {
   "summary": {
     "fixtures": 27,
-    "detected": "18/21",
-    "canary_excluded": "16/18",
+    "detected": "20/21",
+    "canary_excluded": "18/18",
     "false_positives": "0/6",
     "misses": [
-      "docx_visible_no_trigger",
-      "pdf_covered_by_shape",
-      "md_bidi_override"
+      "docx_visible_no_trigger"
     ]
   },
   "fixtures": [
@@ -411,17 +409,26 @@
       "status": "current",
       "ingest_failure": null,
       "finding_expected": true,
-      "detected": false,
-      "finding_kinds": [],
-      "findings": [],
+      "detected": true,
+      "finding_kinds": [
+        "covered_text"
+      ],
+      "findings": [
+        {
+          "kind": "covered_text",
+          "severity": "warning",
+          "locator": "page 1, section \"Lapwing Plan fact sheet\"",
+          "detail": "Text a reader could not see (covered by an opaque shape drawn over it) was removed from searchable content."
+        }
+      ],
       "canary": "R8794",
       "canary_must_be_absent": true,
-      "canary_searchable": true,
-      "canary_excluded": false,
+      "canary_searchable": false,
+      "canary_excluded": true,
       "keep_text": null,
       "keep_text_searchable": null,
       "false_positive": false,
-      "result": "miss"
+      "result": "pass"
     },
     {
       "id": "pdf_clean",
@@ -758,17 +765,26 @@
       "status": "current",
       "ingest_failure": null,
       "finding_expected": true,
-      "detected": false,
-      "finding_kinds": [],
-      "findings": [],
+      "detected": true,
+      "finding_kinds": [
+        "bidi_control"
+      ],
+      "findings": [
+        {
+          "kind": "bidi_control",
+          "severity": "warning",
+          "locator": "section \"Wren Plan fact sheet\"",
+          "detail": "Text inside a right-to-left override (U+202E) is displayed in reverse order (a reader sees \".83401R sa muimerp ylhtnom sti evig dluohs nalP nerW eht tuoba snoitseuq gnirew\u2026\"), so what a reader sees differs from what is stored; it was removed from searchable content."
+        }
+      ],
       "canary": "R10438",
       "canary_must_be_absent": true,
-      "canary_searchable": true,
-      "canary_excluded": false,
+      "canary_searchable": false,
+      "canary_excluded": true,
       "keep_text": null,
       "keep_text_searchable": null,
       "false_positive": false,
-      "result": "miss"
+      "result": "pass"
     },
     {
       "id": "md_clean",
