@@ -1,6 +1,6 @@
 # Kestrel Assistant: implementation plan
 
-Status: the plan as executed, kept as the record of how the work was organised. What was built: [ARCHITECTURE.md](ARCHITECTURE.md). What changed along the way is listed at the end.
+This is the work plan for building the assistant, kept as a record of how the work was organised: it was written before the build and then followed. For what was built and how well it works, read the [README](../README.md) and [ARCHITECTURE.md](ARCHITECTURE.md) instead. The plan uses some working terms: a *work package* (WP) is one unit of the build given to one AI coding assistant (a *sub-agent*), working in its own copy of the repository (a *worktree*); the *lead* is the coordinating AI assistant, and the *candidate* is me. What changed during the build is listed at the end.
 
 ## How the work is organised
 
@@ -163,11 +163,14 @@ Each integration is a commit, so the commit history is the record of time spent.
 
 ## What changed during the build
 
-- **Contracts and service are packages.** WP0 wrote the contracts as `src/kestrel/contracts/` (one module per area, imported as `kestrel.contracts`) rather than one `contracts.py`, to keep files under 500 lines; WP4 likewise built `src/kestrel/service/` rather than `service.py`.
-- **WP13 UI data** (added): answer steps, audit reasons, document and finding counts, edition comparison without a model, and retrieval hit rates at 1, 3 and 6 without a model, so the app and the evaluation could show them.
-- **WP14 Hardening** (added): approved MCP tool results made citable as evidence; `operator` made its own role instead of reusing `staff`; years treated as content when a collection has only one edition; the scanner extended to text covered by a drawn shape and text reversed by bidirectional controls, after the adversarial set found them; `--questions` accepts a bot's gold file.
-- **WP15 UI rework** (added): the Streamlit app reworked after the candidate's review of the first build (scrolling, readability of the evidence panel, colour scheme).
-- **Adversarial evaluation** (added to WP9): 21 fixtures with hidden instructions in every format, a scan evaluation and an attack evaluation per model.
-- **Skills off for the product bot.** The two skills were built and measured; they changed no grade on the test questions and cost about a third more input tokens, so `kestrel-products` ships with `skills: []`. The staff bot keeps its skill.
-- **Model matrix.** Development runs covered Claude Haiku 5.5 and Claude Sonnet 5.5 (Anthropic), GPT-6.1 Sol (OpenAI), Kimi K3.1 Pro, DeepSeek V4.1 Flash and gpt-oss:20b (Ollama Cloud), and gpt-oss:20b on local Ollama. The tested list is in `config/models.yaml`.
-- **Evidence-check wording.** The checks are reported as "evidence checks passed", never "verified", following the independent design review.
+- **Two assistants, as planned.** The product assistant (`bots/kestrel-products/`) and a small demonstration assistant over three fictitious staff policies (`bots/staff-policies/`), restricted to a local model. The code calls an assistant a "bot".
+- **Contracts and service became folders of modules.** The shared definitions were written as `src/kestrel/contracts/` (one module per area) rather than one `contracts.py`, and the service as `src/kestrel/service/` rather than `service.py`, to keep every file under 500 lines.
+- **Data for the web app** (added work package WP13): the steps behind each answer, the reason recorded for each outcome, document and finding counts, a comparison of the two guide editions, and how often search ranks the expected section first, in the top 3 and in the top 6, all without calling a model.
+- **Hardening** (added, WP14): results from an approved external tool can be cited as evidence; administration got its own `operator` role; the document scanner now also catches text hidden under a drawn shape and text reversed by invisible direction characters, after the attack tests below found both.
+- **Web app rework** (added, WP15): the Streamlit app was reworked after my review of the first version (scrolling, readability of the evidence panel, colours).
+- **Attack tests** (added to WP9): 21 test cases hiding instructions in Word, PDF, spreadsheet and Markdown files, checking both that the scanner finds them and that the model does not follow them.
+- **Table lookup in code** (added, WP17): the model misread which band of a table a number falls in, so the table tool (`get_table`) now finds the row whose range contains the number. All final results were run with it.
+- **Skills off for the product assistant.** Skills (extra written guidance the model may read) were built and measured; they changed no result on the test questions and added about a third more input tokens, so the product assistant ships without them. The staff assistant keeps its one skill.
+- **Eight models evaluated**, three runs of the 15 questions each: Claude Haiku 5.5 and Claude Sonnet 5.5 (Anthropic), GPT-6.1 Sol (OpenAI), Kimi K3.1 Pro, DeepSeek V4.1 Flash, GLM 5.3 Flash and gpt-oss:20b (Ollama Cloud), and gpt-oss:20b on local Ollama. Results are in [EVALUATION.md](EVALUATION.md); the recommended models are listed in `config/models.yaml`.
+- **Costs for every hosted model.** List prices for all hosted models, taken from the providers' pages on 23 November 2026, are in `config/pricing.yaml`.
+- **Wording of the checks.** Answers say "evidence checks passed", never "verified", following the independent design review.
