@@ -10,7 +10,14 @@ Numbers are compared as `Decimal` values, so `R50 000`, `R50,000`, `50000` and
 - magnitudes: `R5 million`, `R1.5m`, `R2 billion`, `R250k`, `R10 thousand`;
 - percentages: `75%`, `75 percent`, `75 per cent` (the number 75);
 - ordinals and multiples: `30th`, `3x`;
-- number words from one to twelve (`three months`), except idioms such as "one of".
+- number words from one to twelve (`three months`), except idioms such as "one of";
+- a minus sign written directly before the number or its currency prefix (`-R50 000`,
+  `-5%`) keeps the number negative; a dash between two numbers (`50-99`, a date) is
+  a range or separator, not a sign.
+
+Numbers taken from sources are compared exactly after this normalisation
+(`contains_number`); only the result of a recomputed calculation may be rounded in the
+answer (`matches_calculated`: to the cent, or to the number of decimals shown).
 
 Not numbers: citation labels (`c3`, `c7.r4`), list markers at the start of a line
 (`1.`, `2)`), inline enumerations (`(1)`), and digits inside words or identifiers.
@@ -31,9 +38,10 @@ _LABEL = re.compile(r"\[?\bc[1-9][0-9]*(?:\.r[1-9][0-9]*)?\b\]?", re.IGNORECASE)
 _LIST_MARKER = re.compile(r"(?m)^\s*(?:[-*•]\s*)?\d{1,2}[.)](?=\s)")
 _INLINE_ENUM = re.compile(r"\(\d{1,2}\)|(?<![\w.,])\d{1,2}\)(?=\s)")
 _CURRENCY = re.compile(r"(?<![A-Za-z_])(?:ZAR|R)\s?(?=\d)")
+_SIGNED_CURRENCY = re.compile(r"(?<![\w.,)])-(?:ZAR|R)\s?(?=\d)|(?<![A-Za-z_])(?:ZAR|R)\s?-(?=\d)")
 _GROUP_SEP = r"[ ,']"
 _NUMBER = re.compile(
-    r"(?<![\w.,])(?P<whole>\d{1,3}(?:" + _GROUP_SEP + r"\d{3})+(?!\d)|\d+)"
+    r"(?<![\w.,])(?P<sign>(?<![\w.,)])-)?(?P<whole>\d{1,3}(?:" + _GROUP_SEP + r"\d{3})+(?!\d)|\d+)"
     r"(?P<frac>\.\d+|,\d{1,2}(?!\d))?"
     r"(?:\s?(?P<mag>billion|bn|million|mil|m|thousand|k)\b)?"
     r"(?:st|nd|rd|th|x)?(?![\w])",
@@ -88,6 +96,7 @@ def _prepare(text: str) -> str:
     value = normalise_text(value)
     value = _LABEL.sub(" ", value)
     value = _INLINE_ENUM.sub(" ", value)
+    value = _SIGNED_CURRENCY.sub(" -", value)
     return _CURRENCY.sub(" ", value)
 
 
@@ -100,7 +109,8 @@ def numbers_in(text: str, *, words: bool = True) -> set[Decimal]:
         if value is None:
             continue
         magnitude = match.group("mag")
-        found.add(value * _SCALE[magnitude.lower()] if magnitude else value)
+        value = value * _SCALE[magnitude.lower()] if magnitude else value
+        found.add(-value if match.group("sign") else value)
     if words:
         for match in _WORD.finditer(prepared):
             word = match.group(1).lower()
@@ -116,20 +126,39 @@ def percent_rates(text: str) -> set[Decimal]:
     """Percentages in `text` as fractions: `75%` gives 0.75 (used to trace calculation operands)."""
     prepared = normalise_text(text)
     rates = set()
-    for match in re.finditer(r"(?<![\w.])(\d+(?:[.,]\d+)?)\s*(?:%|percent\b|per cent\b)", prepared, re.IGNORECASE):
-        rates.add((Decimal(match.group(1).replace(",", ".")) / 100).normalize())
+    for match in re.finditer(r"(?<![\w.,)])(-)?(?<![\w.])(\d+(?:[.,]\d+)?)\s*(?:%|percent\b|per cent\b)", prepared, re.IGNORECASE):
+        rate = Decimal(match.group(2).replace(",", ".")) / 100
+        rates.add((-rate if match.group(1) else rate).normalize())
     return rates
 
 
-def close(a: Decimal, b: Decimal) -> bool:
-    """Equal to the cent, or within one part in a million for large values."""
-    tolerance = max(Decimal("0.005"), Decimal("0.000001") * max(abs(a), abs(b)))
-    return abs(a - b) <= tolerance
+CENT = Decimal("0.005")
+
+
+def _decimals_shown(number: Decimal) -> int:
+    exponent = number.normalize().as_tuple().exponent
+    return max(0, -exponent) if isinstance(exponent, int) else 0
+
+
+def rounds_to(value: Decimal, number: Decimal) -> bool:
+    """True when `number` is `value` rounded to the cent, or to the number of decimals `number` shows."""
+    if abs(value - number) <= CENT:
+        return True
+    places = Decimal(1).scaleb(-_decimals_shown(number))
+    try:
+        return value.quantize(places, rounding="ROUND_HALF_UP") == number
+    except ArithmeticError:
+        return False
 
 
 def contains_number(values: set[Decimal], number: Decimal) -> bool:
-    """True when `number` is (close to) one of `values`."""
-    return number in values or any(close(number, value) for value in values)
+    """True when `number` is one of `values` exactly (both already normalised; no tolerance, sign kept)."""
+    return number in values
+
+
+def matches_calculated(values: set[Decimal], number: Decimal) -> bool:
+    """True when `number` is a recomputed calculation result, exactly or as shown rounded (see `rounds_to`)."""
+    return number in values or any(rounds_to(value, number) for value in values)
 
 
 def parse_number(text: str) -> Decimal | None:

@@ -18,7 +18,7 @@ from decimal import Decimal
 
 from kestrel.agent.calculator import Calculation, CalculationError, evaluate, format_decimal
 from kestrel.contracts import AgentAnswer, CheckIssue, DocumentStatus, Evidence, EvidenceReport, ScopeDecision, ToolResult
-from kestrel.verify.numbers import comparable, contains_number, numbers_in, parse_number, percent_rates
+from kestrel.verify.numbers import comparable, contains_number, matches_calculated, numbers_in, parse_number, percent_rates
 from kestrel.verify.quotes import quote_found
 
 UNIT_CONSTANTS = frozenset({Decimal(1), Decimal(12), Decimal(100)})
@@ -177,8 +177,12 @@ def _calculation_support(ctx: _Context) -> set[Decimal]:
     return support | ctx.tool_support(cited_only=not ctx.declined)
 
 
-def _traced(calculation: Calculation, support: set[Decimal]) -> list[Decimal]:
-    return [operand for operand in calculation.operands if not contains_number(support, operand.normalize())]
+def _traced(calculation: Calculation, support: set[Decimal], verified: set[Decimal]) -> list[Decimal]:
+    """Operands found neither exactly in the sources nor among earlier calculation results."""
+    return [
+        operand for operand in calculation.operands
+        if not contains_number(support, operand.normalize()) and not matches_calculated(verified, operand.normalize())
+    ]
 
 
 def _accept(ctx: _Context, calculation: Calculation) -> None:
@@ -192,7 +196,7 @@ def check_calculations(ctx: _Context) -> list[CheckIssue]:
     support = _calculation_support(ctx)
     for calculation in ctx.tool_calculations:
         # The tool's own results count as verified when their operands trace, so later steps can use them.
-        if not _traced(calculation, support | ctx.verified):
+        if not _traced(calculation, support, ctx.verified):
             _accept(ctx, calculation)
     for reported in ctx.answer.calculations:
         expression = reported.expression
@@ -203,15 +207,13 @@ def check_calculations(ctx: _Context) -> list[CheckIssue]:
             continue
         # The tool prints `expression = result`; a result copied with its expression is read after the last `=`.
         claimed = parse_number(reported.result.rsplit("=", 1)[-1])
-        if claimed is None or not (
-            contains_number({computed.value, computed.exact}, claimed)
-        ):
+        if claimed is None or not matches_calculated({computed.value, computed.exact}, claimed):
             issues.append(CheckIssue(
                 check="calculation_recomputed",
                 detail=f"{expression} is {computed.text}, not {reported.result!r}. Use the calculate tool and report its result exactly.",
             ))
             continue
-        missing = _traced(computed, support | ctx.verified)
+        missing = _traced(computed, support, ctx.verified)
         if missing:
             shown = ", ".join(_show(value) for value in missing)
             issues.append(CheckIssue(
@@ -236,7 +238,7 @@ def check_numbers(ctx: _Context) -> list[CheckIssue]:
     """Check 4: every number in the answer and caveats traces to a cited excerpt, the question or a calculation."""
     issues: list[CheckIssue] = []
     # A rate written as 75% also supports 0.75 in the answer, as in "0.75 x R40 000".
-    support = numbers_in(ctx.question) | percent_rates(ctx.question) | ctx.verified
+    support = numbers_in(ctx.question) | percent_rates(ctx.question)
     uncited: dict[str, set[Decimal]] = {}
     cited_labels = {label for label, _ in ctx.cited}
     for label, evidence in ctx.evidence.items():
@@ -254,7 +256,7 @@ def check_numbers(ctx: _Context) -> list[CheckIssue]:
     reported: set[Decimal] = set()
     for where, text in texts:
         for number in sorted(numbers_in(text)):
-            if number in reported or contains_number(support, number):
+            if number in reported or contains_number(support, number) or matches_calculated(ctx.verified, number):
                 continue
             reported.add(number)
             sources = [label for label, values in uncited.items() if contains_number(values, number)]
