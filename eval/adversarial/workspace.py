@@ -21,8 +21,8 @@ from eval.adversarial.fixtures import Fixture
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BOT_ID = "adversarial-fixtures"
 RESULTS_DIR = REPO_ROOT / "results" / "adversarial"
-PRINCIPAL = Principal(user="adversarial-eval", roles=frozenset({"staff", "evaluator"}), channel="eval")
-"""`staff` is the operator role needed to ingest; `evaluator` is the temporary bot's audience."""
+PRINCIPAL = Principal(user="adversarial-eval", roles=frozenset({"operator", "evaluator"}), channel="eval")
+"""`operator` is the role needed to ingest; `evaluator` is the temporary bot's audience."""
 
 _BOT_YAML = """\
 id: {bot_id}

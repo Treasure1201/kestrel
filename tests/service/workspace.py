@@ -150,7 +150,7 @@ def make_workspace(
 
 
 AGENT = Principal(user="tester", roles=frozenset({"agent"}), channel="cli")
-OPERATOR = Principal(user="op", roles=frozenset({"agent", "hr", "staff"}), channel="cli")
+OPERATOR = Principal(user="op", roles=frozenset({"agent", "hr", "staff", "operator"}), channel="cli")
 OUTSIDER = Principal(user="nobody", roles=frozenset({"visitor"}), channel="cli")
 
 

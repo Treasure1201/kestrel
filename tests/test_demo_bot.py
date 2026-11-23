@@ -34,6 +34,7 @@ from eval.normalise import contains_any, locator_key, normalise  # noqa: E402
 BOT = REPO / "bots" / "staff-policies"
 SOURCE = REPO / "data" / "source" / "staff-policies"
 EMPLOYEE = Principal(user="employee", roles=frozenset({"staff"}), channel="cli")
+OPERATOR = Principal(user="operator", roles=frozenset({"staff", "operator"}), channel="cli")
 NOTICE_QUOTE = "must be submitted at least 10 working days before the first day of leave"
 
 
@@ -89,7 +90,7 @@ def test_documents_say_they_are_fictitious_and_hide_nothing() -> None:
 def test_documents_ingest_as_current(staff_settings: Settings) -> None:
     service = build_service(staff_settings, embedder=FakeEmbedder())
     try:
-        report = service.ingest(EMPLOYEE, "staff-policies")
+        report = service.ingest(OPERATOR, "staff-policies")
         assert sorted(f.filename for f in report.files) == sorted(p.name for p in SOURCE.iterdir())
         assert {f.status.value for f in report.files if f.status} == {"current"}
     finally:
@@ -146,7 +147,7 @@ def test_the_agent_can_call_the_calendar_tool(staff_settings: Settings) -> None:
     )
     service = build_service(staff_settings, chat_model_factory=factory, embedder=FakeEmbedder())
     try:
-        service.ingest(EMPLOYEE, "staff-policies")
+        service.ingest(OPERATOR, "staff-policies")
         result = service.ask("staff-policies", "How much notice does a week of annual leave need?", EMPLOYEE)
     finally:
         service.close()
@@ -184,7 +185,7 @@ def test_a_calendar_result_is_cited_evidence_and_its_number_survives(staff_setti
     )
     service = build_service(staff_settings, chat_model_factory=factory, embedder=FakeEmbedder())
     try:
-        service.ingest(EMPLOYEE, "staff-policies")
+        service.ingest(OPERATOR, "staff-policies")
         result = service.ask("staff-policies", "Is 11 March to 20 March enough notice for a week of leave?", EMPLOYEE)
     finally:
         service.close()

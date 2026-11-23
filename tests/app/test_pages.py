@@ -19,7 +19,7 @@ APP = Path(__file__).resolve().parents[2] / "app" / "streamlit_app.py"
 PAGES = ("views/ask.py", "views/documents.py", "views/quality.py")
 
 
-def start(fake: FakeService | None, tmp_path: Path, roles: tuple[str, ...] = ("staff", "broker"), page: str | None = None) -> AppTest:
+def start(fake: FakeService | None, tmp_path: Path, roles: tuple[str, ...] = ("staff", "broker", "operator"), page: str | None = None) -> AppTest:
     settings = Settings(_env_file=None, roles=roles, default_bot=BOT.id)
     runtime.use_service((lambda _s: fake) if fake is not None else _broken, settings=settings, results_root=tmp_path)
     at = AppTest.from_file(str(APP), default_timeout=60)
@@ -168,10 +168,10 @@ def test_documents_page_shows_findings_and_blocks(tmp_path: Path) -> None:
 
 
 def test_non_operator_cannot_block(tmp_path: Path) -> None:
-    at = start(FakeService(documents=[document()]), tmp_path, roles=("broker",), page="views/documents.py")
+    at = start(FakeService(documents=[document()]), tmp_path, roles=("broker", "staff"), page="views/documents.py")
     assert not at.exception, at.exception
     assert not any(b.label == "Block this document" for b in at.button)
-    assert "need the staff role" in text(at)
+    assert "need the operator role" in text(at)
 
 
 def test_quality_page_with_usage_and_runs(tmp_path: Path) -> None:

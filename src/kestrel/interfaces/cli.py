@@ -72,7 +72,7 @@ def doctor() -> None:
 @app.command()
 @rt.handle_errors
 def ingest(bot: BotOption = None, all_bots: AllBots = False) -> None:
-    """Ingest the bot's source folders. Safe to repeat: unchanged files are left alone."""
+    """Ingest the bot's source folders. Safe to repeat: unchanged files are left alone. Needs the operator role."""
     settings = rt.get_settings()
     service = rt.get_service(settings)
     bot_id = None if all_bots else (bot or settings.default_bot)
