@@ -223,7 +223,7 @@ Two further outcomes are set by the application, not the model: `withheld` (evid
 
 A `schema` check comes first: `answered` and `partial` need answer text and at least one citation.
 
-**Tool results as evidence.** A result from an approved MCP tool (for example a working-day count) can be cited by its `t` label. Its quote must be verbatim and its numbers then count as evidence, also as calculation operands. A tool result is not a document, so an answer that cites only tool results is accepted only when it reports the facts the tool returned; any rule or condition still needs a citation of a document excerpt.
+**Tool results as evidence.** A result from an approved MCP tool (for example a working-day count) can be cited by its `t` label. Its quote must be verbatim and its numbers then count as evidence, also as calculation operands. A tool result is not a document: for a bot that has documents, an answer must cite at least one document excerpt, and tool results can support it but never stand alone. Numbers taken from a source must match it exactly after format normalisation; only the result of a recomputed calculation may be rounded.
 
 On failure the agent gets one repair turn with the specific issues. If it still fails, the bot's policy decides: `withhold` (the user sees "could not confirm against the sources", with the retrieved sections to read) or `warn`. Issues fixed by the repair stay in the report as warnings. The outcome is always shown and always audited, together with the steps taken (privacy gate, scope, each tool call, checks, repair).
 

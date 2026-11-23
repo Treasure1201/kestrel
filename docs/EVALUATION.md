@@ -90,6 +90,7 @@ The first run of each model was kept before any fix (`results/dev/first_run_*.js
 | Automatic grader marked a correct Q15 incorrect | "not a guaranteed time" matched the forbidden word "guarantee" | Negated guarantee allowed in the gold file; re-graded offline, no model called |
 | Product-bot skills | Measured on the test questions: no grade changed and input tokens rose by about a third | Skills switched off for the product bot |
 | Staff bot dropped a correct working-day count from the calendar tool | The number checks accepted only document excerpts, so a correct figure from an approved tool was stripped | Approved tool results are labelled and citable; a rule still needs a document citation |
+| Independent code review (after the build) found ten defects, including: a number from a tool was enough to pass an invented rule; 0.015% passed against a source saying 0.01%; the quote "covered" matched "uncovered"; an ID number sent to a tool as an integer was not screened; provider error text could reach the log | Checks and screens written quickly were looser than the documents claimed | All ten fixed, each with a test that failed first: a document citation is always required, sourced numbers must match exactly, quotes must fall on word boundaries, tool arguments of every type are screened, and error text is redacted before logging |
 
 ## Adversarial evaluation
 
