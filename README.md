@@ -28,7 +28,7 @@ Then, as you wish:
 uv run python -m eval.run_eval                # the 15 test questions: about 2 minutes, about US$0.02
 uv run streamlit run app/streamlit_app.py     # optional web app at http://localhost:8501
 uv run kestrel mcp                            # optional MCP server (client setup in docs/DEMO.md)
-uv run pytest -q                              # 993 tests, no network or key needed, a few minutes
+uv run pytest -q                              # 995 tests, no network or key needed, a few minutes
 ```
 
 The evaluation writes a new folder, `results/<timestamp>_<model>/`, holding `results.csv` and a filled copy of the workbook. It never overwrites my submitted workbook. Without uv: in a Python 3.12 virtual environment, `pip install -r requirements.txt`, then `pip install -e . --no-deps`, and leave out `uv run`.
@@ -45,7 +45,7 @@ flowchart LR
     R --> L[("Log")]
 ```
 
-I did not want to trust the model's word, so the model must back every statement with a word-for-word quote, and ordinary code then checks three things: the quote really is in the document it cites, every number in the answer appears in a cited passage or in the question, and every calculation is correct when recomputed. If a check fails, the model gets one chance to fix the answer, with the failures listed. If it still fails, the user sees "this answer could not be confirmed against the sources" and the relevant sections to read, never a wrong answer presented as fact. That is what "withheld" means below. "Declined" is different: the model looked and the documents do not cover the question.
+I did not want to trust the model's word, so the model must back every statement with a word-for-word quote, and ordinary code then checks three things: the quote really is in the document it cites, every number in the answer appears in a cited passage or in the question, and every calculation is correct when recomputed. A citation that fails on its own is dropped if the others still support the answer. Otherwise the model gets one chance to fix the answer, with the failures listed. If it still fails, the user sees "this answer could not be confirmed against the sources" and the relevant sections to read, never a wrong answer presented as fact. That is what "withheld" means below. "Declined" is different: the model looked and the documents do not cover the question.
 
 The model does not read tables by eye. A tool finds the row whose range contains the number in the question (the band for 320 members, say), and a calculator does the arithmetic.
 

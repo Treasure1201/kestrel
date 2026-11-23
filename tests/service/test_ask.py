@@ -256,3 +256,34 @@ def test_an_ungrounded_caveat_is_removed_without_a_repair_turn(tmp_path: Path) -
     assert report is not None and report.passed and not report.repaired
     assert any(i.severity == "warning" and i.detail.startswith("Caveat removed") for i in report.issues)
     assert any(step.kind == "checks" and "1 caveat removed" in step.detail for step in result.steps)
+
+
+def test_a_citation_that_fails_alone_is_dropped_when_the_rest_supports_the_answer(tmp_path: Path) -> None:
+    def reply(messages):  # type: ignore[no-untyped-def]
+        good = CitationOut(label=label_for(messages, CLAIMS_QUOTE), quote=CLAIMS_QUOTE, supports="the answer")
+        junk = CitationOut(label="c99", quote="a label that was never shown", supports="nothing")
+        return final_answer(AgentAnswer(status="answered", answer=CLAIMS_ANSWER, citations=[good, junk]))  # type: ignore[arg-type]
+
+    model, factory = scripted(tool_call("search_documents", {"query": "claim decision working days"}), reply)
+    service = service_with(make_workspace(tmp_path), factory)
+    result = service.ask("demo", "How long does a claim decision take?", AGENT)
+
+    assert result.outcome == Outcome.ANSWERED, result.evidence_report
+    assert [c.quote for c in result.citations] == [CLAIMS_QUOTE]
+    report = result.evidence_report
+    assert report is not None and report.passed and not report.repaired
+    assert any(i.severity == "warning" and i.detail.startswith("Citation removed") for i in report.issues)
+    assert any(step.kind == "checks" and "citation removed" in step.detail for step in result.steps)
+
+
+def test_a_bad_citation_is_not_dropped_when_the_answer_needs_it(tmp_path: Path) -> None:
+    def reply(messages):  # type: ignore[no-untyped-def]
+        junk = CitationOut(label="c99", quote="a label that was never shown", supports="the answer")
+        return final_answer(AgentAnswer(status="answered", answer=CLAIMS_ANSWER, citations=[junk]))  # type: ignore[arg-type]
+
+    model, factory = scripted(tool_call("search_documents", {"query": "claim decision working days"}), reply, reply)
+    service = service_with(make_workspace(tmp_path), factory)
+    result = service.ask("demo", "How long does a claim decision take?", AGENT)
+
+    assert result.outcome == Outcome.WITHHELD, result.evidence_report
+    assert not result.citations

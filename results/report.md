@@ -15,36 +15,37 @@ The human review column counts the assessments a person entered, where a review 
 | 20261123T044924Z_ollama-cloud-gpt-oss-20b | ollama-cloud:gpt-oss:20b | 3 | 45 | 39 | 0 | 0 | 6 | 0 | 0 | 0 | 0 | n/a (45 unpriced) | 6960 | not reviewed |
 | 20261123T050129Z_anthropic-claude-haiku-5-5 | anthropic:claude-haiku-5-5 | 1 | 10 | 8 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0.0014 | 3788 | not reviewed |
 | 20261123T050329Z_anthropic-claude-haiku-5-5 | anthropic:claude-haiku-5-5 | 1 | 15 | 13 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0.0015 | 4346 | Correct: 13, Partially correct: 0, Incorrect: 0, Correctly declined: 2, Incorrectly declined: 0 |
+| 20261123T070635Z_anthropic-claude-haiku-5-5 | anthropic:claude-haiku-5-5 | 3 | 45 | 39 | 0 | 0 | 6 | 0 | 0 | 0 | 0 | 0.0014 | 3830 | not reviewed |
 
 ## Per question (automatic grade per run)
 
-| Question | 20261123T044923Z_anthropic-claude-haiku-5-5 | 20261123T044923Z_anthropic-claude-sonnet-5-5 | 20261123T044923Z_ollama-cloud-kimi-k3-1-pro | 20261123T044923Z_ollama-gpt-oss-20b | 20261123T044923Z_openai-gpt-6-1-sol | 20261123T044924Z_ollama-cloud-deepseek-v4-1-flash | 20261123T044924Z_ollama-cloud-glm-5-3-flash | 20261123T044924Z_ollama-cloud-gpt-oss-20b | 20261123T050129Z_anthropic-claude-haiku-5-5 | 20261123T050329Z_anthropic-claude-haiku-5-5 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Q1 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q2 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | partial / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q3 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / incorrect / correct | correct / correct / correct | - | correct |
-| Q4 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q5 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q6 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q7 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q8 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | incorrect / correct / correct | correct / correct / correct | - | correct |
-| Q9 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q10 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / incorrect / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q11 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q12 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q13 | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | - | declined ok |
-| Q14 | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | - | declined ok |
-| Q15 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct |
-| Q101 | - | - | - | - | - | - | - | - | correct | - |
-| Q102 | - | - | - | - | - | - | - | - | correct | - |
-| Q103 | - | - | - | - | - | - | - | - | correct | - |
-| Q104 | - | - | - | - | - | - | - | - | correct | - |
-| Q105 | - | - | - | - | - | - | - | - | correct | - |
-| Q106 | - | - | - | - | - | - | - | - | declined ok | - |
-| Q107 | - | - | - | - | - | - | - | - | incorrect | - |
-| Q108 | - | - | - | - | - | - | - | - | correct | - |
-| Q109 | - | - | - | - | - | - | - | - | correct | - |
-| Q110 | - | - | - | - | - | - | - | - | correct | - |
+| Question | 20261123T044923Z_anthropic-claude-haiku-5-5 | 20261123T044923Z_anthropic-claude-sonnet-5-5 | 20261123T044923Z_ollama-cloud-kimi-k3-1-pro | 20261123T044923Z_ollama-gpt-oss-20b | 20261123T044923Z_openai-gpt-6-1-sol | 20261123T044924Z_ollama-cloud-deepseek-v4-1-flash | 20261123T044924Z_ollama-cloud-glm-5-3-flash | 20261123T044924Z_ollama-cloud-gpt-oss-20b | 20261123T050129Z_anthropic-claude-haiku-5-5 | 20261123T050329Z_anthropic-claude-haiku-5-5 | 20261123T070635Z_anthropic-claude-haiku-5-5 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Q1 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q2 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | partial / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q3 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / incorrect / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q4 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q5 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q6 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q7 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q8 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | incorrect / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q9 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q10 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / incorrect / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q11 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q12 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q13 | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | - | declined ok | declined ok / declined ok / declined ok |
+| Q14 | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | declined ok / declined ok / declined ok | - | declined ok | declined ok / declined ok / declined ok |
+| Q15 | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | correct / correct / correct | - | correct | correct / correct / correct |
+| Q101 | - | - | - | - | - | - | - | - | correct | - | - |
+| Q102 | - | - | - | - | - | - | - | - | correct | - | - |
+| Q103 | - | - | - | - | - | - | - | - | correct | - | - |
+| Q104 | - | - | - | - | - | - | - | - | correct | - | - |
+| Q105 | - | - | - | - | - | - | - | - | correct | - | - |
+| Q106 | - | - | - | - | - | - | - | - | declined ok | - | - |
+| Q107 | - | - | - | - | - | - | - | - | incorrect | - | - |
+| Q108 | - | - | - | - | - | - | - | - | correct | - | - |
+| Q109 | - | - | - | - | - | - | - | - | correct | - | - |
+| Q110 | - | - | - | - | - | - | - | - | correct | - | - |
 
 `*` the expected section was never retrieved (retrieval miss).
 

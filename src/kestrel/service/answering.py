@@ -64,6 +64,40 @@ def _check(question: Screened, answer: AgentAnswer, ctx: RequestContext, scope: 
                       has_documents=bool(bot.knowledge.collections))
 
 
+_CITATION_CHECKS = frozenset({"label_retrieved", "quote_verbatim", "table_row_cited"})
+
+
+def _drop_bad_citations(question: Screened, answer: AgentAnswer, issues: list[CheckIssue], ctx: RequestContext,
+                        scope: ScopeDecision, bot: BotConfig, removed: list[CheckIssue]) -> tuple[AgentAnswer, list[CheckIssue]]:
+    """Drop citations that fail on their own, when the answer still passes every check without them.
+
+    A citation whose label was never shown, whose quote is not in the source, or that names a
+    whole table is never shown to the user. If the remaining citations still support every
+    number and claim check, the answer stands on them and each removal is reported as a
+    warning. If they do not, nothing is changed and the answer goes to repair as before.
+    """
+    errors = [i for i in issues if i.severity == "error"]
+    if not errors or any(i.check not in _CITATION_CHECKS or not i.label for i in errors):
+        return answer, issues
+    bad = {i.label for i in errors}
+    kept = [c for c in answer.citations if clean_label(c.label) not in bad]
+    if not kept:
+        return answer, issues
+    trimmed = answer.model_copy(update={"citations": kept})
+    rechecked = _check(question, trimmed, ctx, scope, bot)
+    if any(i.severity == "error" for i in rechecked):
+        return answer, issues
+    for issue in errors:
+        removed.append(issue.model_copy(update={
+            "severity": "warning",
+            "detail": f"Citation removed: {issue.detail}",
+        }))
+    count = len(answer.citations) - len(kept)
+    ctx.record_step("checks", "Removed unsupported citations",
+                    f"{count} citation{'s' if count != 1 else ''} removed; the answer passes on the rest")
+    return trimmed, rechecked
+
+
 async def answer_question(
     runtime: Runtime,
     bot: BotConfig,
@@ -98,6 +132,7 @@ async def answer_question(
     removed: list[CheckIssue] = []
     outcome.answer = _prune(question, turn.answer, ctx, scope, removed)
     outcome.issues = _check(question, outcome.answer, ctx, scope, bot)
+    outcome.answer, outcome.issues = _drop_bad_citations(question, outcome.answer, outcome.issues, ctx, scope, bot, removed)
     _record_checks(ctx, outcome.issues)
     earlier: list[CheckIssue] = []
     while not outcome.passed and ctx.budget.repairs < ctx.budget.max_repairs:
@@ -111,6 +146,7 @@ async def answer_question(
         turn = repaired
         outcome.answer = _prune(question, repaired.answer, ctx, scope, removed)
         outcome.issues = _check(question, outcome.answer, ctx, scope, bot)
+        outcome.answer, outcome.issues = _drop_bad_citations(question, outcome.answer, outcome.issues, ctx, scope, bot, removed)
         outcome.repaired = True
         _record_checks(ctx, outcome.issues)
     # Issues the repair turn fixed are kept as warnings, so the audit shows why a repair happened.

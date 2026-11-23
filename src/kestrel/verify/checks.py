@@ -147,6 +147,9 @@ def check_quotes(ctx: _Context) -> list[CheckIssue]:
         hint = f" It does appear in {elsewhere[0]}; cite that label instead." if elsewhere else (
             " Copy the exact words from that excerpt (an ellipsis may skip words); do not paraphrase."
         )
+        if not elsewhere and evidence.hit.filename and evidence.hit.filename in citation.quote:
+            hint = (" You quoted the line that names the source (file and location), not the document text."
+                    " Quote words from the text under that line.")
         where = "table row" if evidence.row is not None else "excerpt"
         issues.append(CheckIssue(
             check="quote_verbatim",
