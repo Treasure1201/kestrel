@@ -12,7 +12,7 @@ what to do about it, because it is sent back to the model in the repair turn.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -329,6 +329,47 @@ def check_source_status(ctx: _Context) -> list[CheckIssue]:
                 detail=f"{label} comes from a {status.value} document ({evidence.hit.title}). Cite current documents only "
                 "unless the question asks for that edition.",
             ))
+    return issues
+
+
+WITHDRAWN_REASON = "A source was withdrawn while the answer was being prepared, so the answer is not shown."
+
+
+def check_sources_still_current(
+    answer: AgentAnswer,
+    evidence: Mapping[str, Evidence],
+    current_status: Mapping[str, DocumentStatus | None],
+    eligible_ids: Collection[str],
+) -> list[CheckIssue]:
+    """The final source check, run against the repository just before the answer is returned.
+
+    `current_status` maps each cited document id to its status now (None when it no
+    longer exists); `eligible_ids` are the documents eligible under the request's scope
+    now. A cited document that is now blocked, gone, or no longer eligible fails the
+    `source_status` check, even though it was current when it was retrieved.
+    """
+    if answer.status not in {"answered", "partial"}:
+        return []
+    issues = []
+    eligible = set(eligible_ids)
+    reported: set[str] = set()
+    for citation in answer.citations:
+        label = clean_label(citation.label)
+        item = evidence.get(label)
+        if item is None or item.hit.document_id in reported:
+            continue
+        document_id = item.hit.document_id
+        status = current_status.get(document_id)
+        if status is not None and status != DocumentStatus.BLOCKED and document_id in eligible:
+            continue
+        reported.add(document_id)
+        now = "removed" if status is None else status.value
+        issues.append(CheckIssue(
+            check="source_status",
+            label=label,
+            detail=f"{label} comes from {item.hit.title}, which was withdrawn ({now}) while the answer was being "
+            "prepared. Cite current documents only.",
+        ))
     return issues
 
 

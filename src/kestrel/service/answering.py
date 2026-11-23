@@ -15,7 +15,7 @@ from kestrel.agent.tools import build_builtin_tools
 from kestrel.contracts import REPAIRED_PREFIX, AgentAnswer, BotConfig, CheckIssue, McpServerSpec, ScopeDecision, Screened
 from kestrel.errors import BudgetExceededError, ProviderUnavailableError
 from kestrel.service.runtime import Runtime
-from kestrel.verify import repair_message, run_checks
+from kestrel.verify import WITHDRAWN_REASON, check_sources_still_current, clean_label, repair_message, run_checks
 
 
 @dataclass
@@ -27,6 +27,8 @@ class Answered:
     issues: list[CheckIssue] = field(default_factory=list)
     repaired: bool = False
     warnings: list[str] = field(default_factory=list)
+    withheld_reason: str | None = None
+    """Set when a specific final check, rather than the evidence checks in general, stopped the answer."""
 
     @property
     def passed(self) -> bool:
@@ -100,7 +102,29 @@ async def answer_question(
     outcome.issues += [
         i.model_copy(update={"severity": "warning", "detail": f"{REPAIRED_PREFIX}{i.detail}"}) for i in earlier
     ]
+    _recheck_sources(runtime, outcome)
     return outcome
+
+
+def _recheck_sources(runtime: Runtime, outcome: Answered) -> None:
+    """Re-read every cited document's status just before returning: a block or supersession during the run counts."""
+    if outcome.answer is None:
+        return
+    ctx = outcome.context
+    cited = {
+        evidence.hit.document_id
+        for evidence in (ctx.evidence.get(clean_label(c.label)) for c in outcome.answer.citations)
+        if evidence is not None
+    }
+    if not cited:
+        return
+    documents = runtime.store.documents
+    current = {doc_id: record.status if (record := documents.get_document(doc_id)) else None for doc_id in sorted(cited)}
+    issues = check_sources_still_current(outcome.answer, dict(ctx.evidence), current, documents.eligible_document_ids(ctx.scope))
+    if issues:
+        outcome.issues += issues
+        outcome.withheld_reason = WITHDRAWN_REASON
+        ctx.record_step("checks", "A cited source was withdrawn", ", ".join(sorted({i.label or "" for i in issues})))
 
 
 def _record_checks(ctx: RequestContext, issues: list[CheckIssue]) -> None:

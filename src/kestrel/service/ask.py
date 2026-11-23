@@ -148,7 +148,7 @@ def _success(runtime: Runtime, req: _Request) -> AskResult:
     )
     if not report.passed and req.bot.verification.on_failure == "withhold":
         return AskResult(outcome=Outcome.WITHHELD, answer=WITHHELD_MESSAGE,
-                         reason="The evidence checks did not pass after one repair attempt.", **common)
+                         reason=answered.withheld_reason or "The evidence checks did not pass after one repair attempt.", **common)
     req.question_derived_reason = True
     text = answer.answer.strip() or (answer.reason or "").strip()
     return AskResult(
