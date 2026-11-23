@@ -63,16 +63,71 @@ def _text(result: Any) -> str:
     return str(result)
 
 
-def _screen_value(value: Any, screen: PrivacyScreen, policy: PrivacyPolicy, found: list[str]) -> Any:
+ArgPath = tuple[str | int, ...]
+
+
+def _screen_value(
+    value: Any, screen: PrivacyScreen, policy: PrivacyPolicy, found: list[str], numbers: list[ArgPath] | None = None, path: ArgPath = (),
+) -> Any:
+    """Screen every string, the string form of every number, and every dictionary key.
+
+    A number that matches is replaced by the placeholder string; its path is added
+    to `numbers` so the caller can refuse a tool whose schema needs a number there.
+    """
     if isinstance(value, str):
         screened = screen.screen(value, policy)
         found.extend(screened.matched)
         return screened.text
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        screened = screen.screen(str(value), policy)
+        if not screened.matched:
+            return value
+        found.extend(screened.matched)
+        if numbers is not None:
+            numbers.append(path)
+        return screened.text
     if isinstance(value, dict):
-        return {key: _screen_value(item, screen, policy, found) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_screen_value(item, screen, policy, found) for item in value]
+        result: dict[Any, Any] = {}
+        for key, item in value.items():
+            name = key
+            if isinstance(key, (str, int, float)) and not isinstance(key, bool):
+                screened_key = screen.screen(str(key), policy)
+                if screened_key.matched:
+                    found.extend(screened_key.matched)
+                    name = screened_key.text
+            result[name] = _screen_value(item, screen, policy, found, numbers, (*path, str(name)))
+        return result
+    if isinstance(value, (list, tuple)):
+        return [_screen_value(item, screen, policy, found, numbers, (*path, index)) for index, item in enumerate(value)]
     return value
+
+
+def _schema_type_at(schema: Any, path: ArgPath) -> set[str]:
+    """The JSON-schema types allowed at `path`, or an empty set when the schema does not say."""
+    node = schema
+    for step in path:
+        if not isinstance(node, dict):
+            return set()
+        node = node.get("items") if isinstance(step, int) else (node.get("properties") or {}).get(step)
+    if not isinstance(node, dict):
+        return set()
+    kind = node.get("type")
+    kinds = {kind} if isinstance(kind, str) else set(kind) if isinstance(kind, list) else set()
+    for option in node.get("anyOf") or node.get("oneOf") or ():
+        if isinstance(option, dict) and isinstance(option.get("type"), str):
+            kinds.add(option["type"])
+    return kinds
+
+
+def _needs_number(tool: BaseTool, path: ArgPath) -> bool:
+    schema = tool.args_schema
+    if schema is not None and not isinstance(schema, dict):
+        try:
+            schema = schema.model_json_schema()  # type: ignore[union-attr]
+        except Exception:  # an unreadable schema: assume the number is needed
+            return True
+    kinds = _schema_type_at(schema, path)
+    return not kinds or "string" not in kinds
 
 
 OnCall = Callable[[str, str], None]
@@ -107,14 +162,21 @@ def guard_tool(
 
     async def call(**kwargs: Any) -> str:
         found: list[str] = []
+        numbers: list[ArgPath] = []
         try:
-            arguments = _screen_value(kwargs, screen, policy, found)
+            arguments = _screen_value(kwargs, screen, policy, found, numbers)
         except KestrelError:
             note("Tool call refused", "the arguments could not be screened")
             return "Error: the arguments could not be screened for personal information, so the tool was not called."
         if found and policy.on_personal_information == "block":
             note("Tool call refused", "the arguments held personal information")
             return "Error: the arguments contain personal information, so the tool was not called. Do not send personal details."
+        if any(_needs_number(tool, path) for path in numbers):
+            note("Tool call refused", "a number in the arguments held personal information")
+            return (
+                "Error: a number in the arguments looks like personal information and was redacted, but the tool needs a "
+                "number there, so it was not called. Do not send personal details."
+            )
         try:
             result = await asyncio.wait_for(tool.ainvoke(arguments), timeout=CALL_TIMEOUT_S)
         except TimeoutError:
