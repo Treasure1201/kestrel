@@ -238,3 +238,21 @@ def test_invalid_question_is_an_audited_error(tmp_path: Path, question: str) -> 
     assert result.outcome == Outcome.ERROR and result.error_category == "invalid_input"
     assert result.question == ""
     assert service.audit_tail(OPERATOR)[0].entry.error_category == "invalid_input"
+
+
+def test_an_ungrounded_caveat_is_removed_without_a_repair_turn(tmp_path: Path) -> None:
+    kept = "Some documents may take longer to obtain."
+    model, factory = scripted(
+        tool_call("search_documents", {"query": "claim decision working days"}),
+        cite(CLAIMS_ANSWER, [CLAIMS_QUOTE], caveats=[kept, "Urgent cases are decided within 3 working days."]),
+    )
+    service = service_with(make_workspace(tmp_path), factory)
+    result = service.ask("demo", "How long does a claim decision take?", AGENT)
+
+    assert result.outcome == Outcome.ANSWERED, result.evidence_report
+    assert list(result.caveats) == [kept]
+    assert result.answer == CLAIMS_ANSWER and result.citations[0].quote == CLAIMS_QUOTE
+    report = result.evidence_report
+    assert report is not None and report.passed and not report.repaired
+    assert any(i.severity == "warning" and i.detail.startswith("Caveat removed") for i in report.issues)
+    assert any(step.kind == "checks" and "1 caveat removed" in step.detail for step in result.steps)

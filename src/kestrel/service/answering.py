@@ -1,4 +1,8 @@
-"""The answering coroutine: agent, evidence checks, one repair turn, and the bot's failure policy."""
+"""The answering coroutine: agent, evidence checks, one repair turn, and the bot's failure policy.
+
+Unsupported caveats are removed (and reported as warnings) before each round of checks,
+so optional commentary never costs the repair turn.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ from kestrel.contracts import REPAIRED_PREFIX, AgentAnswer, BotConfig, CheckIssu
 from kestrel.errors import BudgetExceededError, ProviderUnavailableError
 from kestrel.service.runtime import Runtime
 from kestrel.verify import WITHDRAWN_REASON, check_sources_still_current, clean_label, repair_message, run_checks
+from kestrel.verify.caveats import prune_caveats, pruned_summary
 
 
 @dataclass
@@ -43,6 +48,15 @@ def new_budget(bot: BotConfig, runtime: Runtime) -> Budget:
         max_repairs=bot.verification.max_repairs,
         timeout_s=bot.model.timeout_s or runtime.settings.timeout_s,
     )
+
+
+def _prune(question: Screened, answer: AgentAnswer, ctx: RequestContext, scope: ScopeDecision, removed: list[CheckIssue]) -> AgentAnswer:
+    """Drop unsupported caveats before the checks, recording each removal as a step and a warning."""
+    pruned, issues = prune_caveats(question.text, answer, dict(ctx.evidence), scope, tuple(ctx.calculations), dict(ctx.tool_results))
+    if issues:
+        ctx.record_step("checks", "Removed unsupported caveats", pruned_summary(issues))
+        removed += issues
+    return pruned
 
 
 def _check(question: Screened, answer: AgentAnswer, ctx: RequestContext, scope: ScopeDecision, bot: BotConfig) -> list[CheckIssue]:
@@ -81,8 +95,9 @@ async def answer_question(
             "The model stopped without giving a final answer. Try again, or choose another model with --model.",
             detail="no structured response after one nudge",
         )
-    outcome.answer = turn.answer
-    outcome.issues = _check(question, turn.answer, ctx, scope, bot)
+    removed: list[CheckIssue] = []
+    outcome.answer = _prune(question, turn.answer, ctx, scope, removed)
+    outcome.issues = _check(question, outcome.answer, ctx, scope, bot)
     _record_checks(ctx, outcome.issues)
     earlier: list[CheckIssue] = []
     while not outcome.passed and ctx.budget.repairs < ctx.budget.max_repairs:
@@ -94,14 +109,15 @@ async def answer_question(
             break
         earlier += [i for i in outcome.issues if i.severity == "error"]
         turn = repaired
-        outcome.answer = repaired.answer
-        outcome.issues = _check(question, repaired.answer, ctx, scope, bot)
+        outcome.answer = _prune(question, repaired.answer, ctx, scope, removed)
+        outcome.issues = _check(question, outcome.answer, ctx, scope, bot)
         outcome.repaired = True
         _record_checks(ctx, outcome.issues)
     # Issues the repair turn fixed are kept as warnings, so the audit shows why a repair happened.
     outcome.issues += [
         i.model_copy(update={"severity": "warning", "detail": f"{REPAIRED_PREFIX}{i.detail}"}) for i in earlier
     ]
+    outcome.issues += removed
     _recheck_sources(runtime, outcome)
     return outcome
 
